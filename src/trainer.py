@@ -63,7 +63,7 @@ class Trainer:
         self.t = split == 'train'
         model.train(self.t)
         data = self.train_dataset
-        loader = DataLoader(data, shuffle=True, pin_memory=True, batch_size=config.batchSize,
+        loader = DataLoader(data, shuffle=False, pin_memory=True, batch_size=config.batchSize,
                             num_workers=config.numWorkers)
 
         pbar = tqdm(enumerate(loader), total=len(loader),
@@ -130,7 +130,7 @@ class Trainer:
                                                                                               config.maxEpochs - 1):
                 # DataParallel wrappers keep raw model object in .module
                 rawModel = self.model.module if hasattr(self.model, "module") else self.model
-                torch.save(rawModel, self.config.epochSavePath + str(epoch + 1) + '.pth')
+                # torch.save(rawModel, self.config.epochSavePath + str(epoch + 1) + '.pth')
 
             # save the model predicts and targets every 10 epoch
             # if (epoch + 1) % config.epochSaveFrequency == 0:
@@ -147,7 +147,7 @@ class Trainer:
         data = self.test_dataset
         totalLoss = 0
         totalR2s = 0
-        loader = DataLoader(data, shuffle=True, pin_memory=True,
+        loader = DataLoader(data, shuffle=False, pin_memory=True,
                             batch_size=config.batchSize,
                             num_workers=config.numWorkers)
 
@@ -166,7 +166,9 @@ class Trainer:
 
             totalLoss += loss.item()
             totalR2s += r2_s
-            print(f"Test Loss: {totalLoss / (it + 1):.4f}, R2_score: {r2_s:.2f}%")
+            print(f"Batch Loss: {loss:.4f} R2_score: {r2_s:.4f}")
 
-        save_data2txt(predicts, 'src_trg_data/test_predict.txt')
-        save_data2txt(targets, 'src_trg_data/test_target.txt')
+        print(f"Test Loss: {totalLoss / (it + 1):.4f}, R2_score: {totalR2s / (it + 1):.4f}")
+
+        # save_data2txt(predicts, 'src_trg_data/test_predict.txt')
+        # save_data2txt(targets, 'src_trg_data/test_target.txt')

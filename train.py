@@ -4,8 +4,7 @@ import datetime
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
-from src.utils import set_seed, resample_data, spike_to_counts2
-from src.utils import load_mat, spike_to_counts1, save_data2txt, gaussian_nomalization
+from src.utils import *
 from src.model import Transformer
 from src.trainer import Trainer, TrainerConfig
 from torch.utils.data import Dataset, random_split, Subset
@@ -22,7 +21,7 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(name)s - %(message)s
 
 # data
 modelType = "Transormer"
-dataFile = "indy_20160624_03.mat"
+dataFile = "indy_20160622_01.mat"
 dataPath = "data/"
 dataFileCoding = "utf-8"
 # use 0 for char-level english and 1 for chinese. Only affects some Transormer hyperparameters
@@ -32,7 +31,7 @@ dataFileType = 0
 epochSaveFrequency = 10    # every ten epoch
 epochSavePath = "pth/trained-"
 batchSize = 32
-nEpoch = 1
+nEpoch = 10
 modelLevel = "word"     # "character" or "word"
 ctxLen = 128    # the length of the sequence
 out_dim = 2   # the output dim
@@ -54,93 +53,38 @@ print('loading data... ' + dataFile)
 
 
 class Dataset(Dataset):
-    def __init__(self, ctx_len, vocab_size, spike, target):
+    def __init__(self, vocab_size, spike, target, batch_size):
         print("loading data...", end=' ')
-        self.ctxLen = ctx_len
+        # self.ctxLen = ctx_len
         self.vocabSize = vocab_size
+        self.batchSize = batch_size
         self.x = spike
         self.y = target
-
-        # Gaussian normalization
-        # self.x, self.y = gaussian_nomalization(x, y)
-
-        # min-max normalization
-        # self.x, self.y = min_max_nomalization(x, y)
-
+        self.length = -(-len(self.x) // self.batchSize)
 
     def __len__(self):
-        return len(self.x)
+        return self.length
 
     def __getitem__(self, item):
-        # i = np.random.randint(0, len(self.x) - self.ctxLen)
-        if torch.is_tensor(item):
-            idx = item.tolist()
-            x = self.x[idx]
-            y = self.y[idx]
-        else:
-            i = item % (len(self.x) - self.ctxLen)
-            x = torch.tensor(self.x[i:i + self.ctxLen, :], dtype=torch.float32)
-            y = torch.tensor(self.y[i:i + self.ctxLen, :], dtype=torch.float32)
-        # 用于测试的简化版本
-        # x = torch.randn(self.ctxLen, 96)  # 假设数据形状为[ctxLen, 96]
-        # y = torch.randn(self.ctxLen, 2)  # 假设标签形状为[ctxLen, 2]
+        start = item * self.batchSize
+        end = start + self.batchSize
+        if end >= len(self.x):
+            end = len(self.x) - 1
+        x = torch.tensor(self.x[start:end], dtype=torch.float32)
+        y = torch.tensor(self.y[start:end], dtype=torch.float32)
+
+        if len(x) < self.batchSize:
+            x = torch.nn.functional.pad(x, (0, 0, 0, self.batchSize - len(x)))
+            y = torch.nn.functional.pad(y, (0, 0, 0, self.batchSize - len(y)))
+
         return x, y
 
-class Dataset_list(Dataset):
-    def __init__(self, ctx_len, vocab_size, x, y):
-        self.ctxLen = ctx_len
-        self.vocabSize = vocab_size
-        self.x = x
-        self.y = y
 
-    def __len__(self):
-        return len(self.x)
+# load the data from .npy file (have been processed including normalization and gaussion filter)
+spike = np.load('indy_20160624_03_processed_spike.npy')
+target = np.load('indy_20160624_03_processed_target.npy')
 
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-
-        x = self.x[idx]
-        y = self.y[idx]
-        return x, y
-
-def split_dataset(ctxLen, out_dim, dataset, train_size):
-    test_size = len(dataset) - train_size
-    train_indices = list(range(0, train_size))
-    test_indices = list(range(train_size, len(dataset)))
-
-    train_x = dataset.x[train_indices]
-    train_y = dataset.y[train_indices]
-    save_data2txt(train_x, 'src_trg_data/train_spike_num.txt')
-    save_data2txt(train_y, 'src_trg_data/train_target_velocity.txt')
-
-    test_x = dataset.x[test_indices]
-    test_y = dataset.y[test_indices]
-    save_data2txt(test_x, 'src_trg_data/test_spike_num.txt')
-    save_data2txt(test_y, 'src_trg_data/test_target_velocity.txt')
-
-    train_dataset = Dataset(ctxLen, out_dim, train_x, train_y)
-    test_dataset = Dataset(ctxLen, out_dim, test_x, test_y)
-
-    return train_dataset, test_dataset
-
-spike, y, t = load_mat(dataPath+dataFile)
-# y = resample_data(y, 4, 1)
-# new_time = np.linspace(t[0, 0], t[0, -1], len(y))
-# spike, target = spike_to_counts2(spike, y, np.transpose(new_time), gap_num)
-spike, target = spike_to_counts1(spike, y, t[0])
-# spike = np.transpose(spike)
-
-# spike = np.load('data/indy_20160622_01_processed_spike.npy')
-# target = np.load('data/indy_20160622_01_processed_target.npy')
-
-dataset = Dataset(ctxLen, out_dim, spike, target)
-
-# 归一化
-dataset.x, dataset.y = gaussian_nomalization(dataset.x, dataset.y)
-# 平滑处理
-dataset.x = gaussian_filter1d(dataset.x, 3, axis=0)
-dataset.y = gaussian_filter1d(dataset.y, 3, axis=0)
+dataset = Dataset(out_dim, spike, target, batchSize)
 
 src_pad_idx = -1
 trg_pad_idx = -1
@@ -169,5 +113,5 @@ trainer = Trainer(model, train_Dataset, test_Dataset, tConf)
 trainer.train()
 trainer.test()
 
-torch.save(model, epochSavePath + trainer.get_runName() + '-' + datetime.datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
-           + '.pth')
+# torch.save(model, epochSavePath + trainer.get_runName() + '-' + datetime.datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
+#            + '.pth')
