@@ -30,8 +30,8 @@ dataFileType = 0
 # hyperparameter
 epochSaveFrequency = 10    # every ten epoch
 epochSavePath = "pth/trained-"
-batchSize = 32
-nEpoch = 10
+batchSize = 64
+nEpoch = 3
 modelLevel = "word"     # "character" or "word"
 ctxLen = 128    # the length of the sequence
 out_dim = 2   # the output dim
@@ -53,38 +53,37 @@ print('loading data... ' + dataFile)
 
 
 class Dataset(Dataset):
-    def __init__(self, vocab_size, spike, target, batch_size):
+    def __init__(self, ctxLen, vocab_size, spike, target):
         print("loading data...", end=' ')
-        # self.ctxLen = ctx_len
         self.vocabSize = vocab_size
-        self.batchSize = batch_size
+        self.ctxLen = ctxLen
         self.x = spike
         self.y = target
-        self.length = -(-len(self.x) // self.batchSize)
+        self.length = -(-len(self.x) // self.ctxLen)
 
     def __len__(self):
         return self.length
 
     def __getitem__(self, item):
-        start = item * self.batchSize
-        end = start + self.batchSize
+        start = item * self.ctxLen
+        end = start + self.ctxLen
         if end >= len(self.x):
             end = len(self.x) - 1
         x = torch.tensor(self.x[start:end], dtype=torch.float32)
         y = torch.tensor(self.y[start:end], dtype=torch.float32)
 
-        if len(x) < self.batchSize:
-            x = torch.nn.functional.pad(x, (0, 0, 0, self.batchSize - len(x)))
-            y = torch.nn.functional.pad(y, (0, 0, 0, self.batchSize - len(y)))
+        if len(x) < self.ctxLen:
+            x = torch.nn.functional.pad(x, (0, 0, 0, self.ctxLen - len(x)))
+            y = torch.nn.functional.pad(y, (0, 0, 0, self.ctxLen - len(y)))
 
         return x, y
 
 
 # load the data from .npy file (have been processed including normalization and gaussion filter)
-spike = np.load('indy_20160624_03_processed_spike.npy')
-target = np.load('indy_20160624_03_processed_target.npy')
+spike = np.load('indy_20160622_01_processed_spike.npy')
+target = np.load('indy_20160622_01_processed_target.npy')
 
-dataset = Dataset(out_dim, spike, target, batchSize)
+dataset = Dataset(ctxLen, out_dim, spike, target)
 
 src_pad_idx = -1
 trg_pad_idx = -1
