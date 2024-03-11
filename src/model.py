@@ -210,6 +210,7 @@ class Transformer(nn.Module):
         self.trg_pad_idx = trg_pad_idx
         self.device = device
         self.max_length = max_length
+        self.reg = nn.Linear(embed_size, trg_feature_dim)
 
     def make_src_mask(self, src):
         # src shape: (N, src_len)
@@ -227,17 +228,14 @@ class Transformer(nn.Module):
 
         return trg_mask.to(self.device)
 
-    def forward(self, src, trg):
-        src = self.pad_sequences(src, self.src_pad_idx, self.max_length)
+    def forward(self, src):
+        # src = self.pad_sequences(src, self.src_pad_idx, self.max_length)
         src_mask = self.make_src_mask(src)
-        trg_mask = self.make_trg_mask(trg)
+        # trg_mask = self.make_trg_mask(trg)
         enc_src = self.encoder(src, src_mask)
-        out = self.decoder(trg, enc_src, src_mask, None)
-        loss = None
-        if trg is not None:
-            loss = F.mse_loss(out.view(-1, 2), trg.view(-1, 2))
-            r2_s = r2_score(out.view(-1, 2), trg.view(-1, 2))
-        return out, loss, r2_s
+        # out = self.decoder(trg, enc_src, src_mask, None)
+        out = self.reg(enc_src)
+        return out
 
     def get_optimizer_and_scheduler(self, config):
         # 基础的Adam优化器
@@ -261,15 +259,15 @@ class Transformer(nn.Module):
         对给定的批次数据进行填充，以确保所有序列的长度一致。
 
         参数:
-        - batch: 输入的批次数据，假设形状为[N, T, C]，其中T可能小于128。
+        - batch: 输入的批次数据，假设形状为[N, T, C]，其中T可能小于seq_size。
         - pad_value: 用于填充的值，默认为-1。
 
         返回:
-        - padded_batch: 填充后的批次数据，形状为[N, 128, C]。
+        - padded_batch: 填充后的批次数据，形状为[N, seq_size, C]。
         """
         N, T, C = batch.shape
         if T == max_length:
-            return batch  # 如果序列长度已经是128，则不需要填充
+            return batch  # 如果序列长度已经是seq_size，则不需要填充
 
         # 计算需要填充的长度
         pad_length = max_length - T

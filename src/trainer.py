@@ -3,6 +3,8 @@ import torch
 import logging
 from tqdm.auto import tqdm
 from torch.utils.data.dataloader import DataLoader
+from torcheval.metrics.functional import r2_score
+import matplotlib.pyplot as plt
 
 from src.utils import save_data2txt
 
@@ -34,6 +36,7 @@ class TrainerConfig:
 
 class Trainer:
     def __init__(self, model, train_dataset, test_dataset, config):
+        self.Loss_train = []
         self.model = model
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
@@ -68,21 +71,24 @@ class Trainer:
 
         pbar = tqdm(enumerate(loader), total=len(loader),
                     bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}') if self.t else enumerate(loader)
-
+        ct = 0
         for it, (x, y) in pbar:
             x = x.to(self.device)
             y = y.to(self.device)
 
             with torch.set_grad_enabled(self.t):
-                pre, loss, r2_s = model(x, y)
-                predicts.append(pre.view(-1, 2))
+                out = model(x)
+                predicts.append(out.view(-1, 2))
                 targets.append(y.view(-1, 2))
-                loss = loss.mean()
-                totalLoss += loss.item()
-                totalR2s += r2_s
 
                 if self.t:
+                    ct += 1
                     model.zero_grad()
+                    loss = self.config.criterion(out.view(-1, 2), y.view(-1, 2))
+                    # loss = loss.mean()
+                    r2_s = r2_score(out.view(-1, 2), y.view(-1, 2))
+                    totalLoss += loss.item()
+                    totalR2s += r2_s
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradNormClip)
                     optimizer.step()
@@ -113,7 +119,7 @@ class Trainer:
                     pbar.set_description(
                         f"epoch {epoch+1} progress {progress * 100.0:.2f}% iter {it + 1}: r2_score "
                         f"{totalR2s / (it + 1):.2f} loss {totalLoss / (it + 1):.4f} lr {lr:e}")
-
+        self.Loss_train.append(totalLoss / ct)
         return predicts, targets
 
     def train(self):
@@ -153,20 +159,45 @@ class Trainer:
 
         pbar = tqdm(enumerate(loader), total=len(loader),
                     bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}') if self.t else enumerate(loader)
-
+        ct = 0
         for it, (x, y) in pbar:
+            ct += 1
             x = x.to(self.device)  # place data on the correct device
             y = y.to(self.device)
 
             with torch.set_grad_enabled(self.t):
-                pre, loss, r2_s = model(x, y)  # forward the model
-                predicts.append(pre.view(-1, 2))
+                out = model(x)  # forward the model
+                predicts.append(out.view(-1, 2))
                 targets.append(y.view(-1, 2))
-                loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
-
+                loss = self.config.criterion(out.view(-1, 2), y.view(-1, 2))
+                # loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
+                r2_s = r2_score(out.view(-1, 2), y.view(-1, 2))
             totalLoss += loss.item()
             totalR2s += r2_s
-            print(f"Test Loss: {totalLoss / (it + 1):.4f}, R2_score: {r2_s:.2f}%")
+            print(f"Batch Loss: {loss:.4f}, R2_score: {r2_s:.2f}%")
+
+        print(f"Test Mean Loss: {totalLoss / ct:.4f}, R2_score: {totalR2s / ct:.4f},  Num_iter: {ct}")
 
         save_data2txt(predicts, 'src_trg_data/test_predict.txt')
         save_data2txt(targets, 'src_trg_data/test_target.txt')
+
+        n = 10000
+        tar = torch.cat(targets, dim=0).cpu().detach().numpy()
+        pre = torch.cat(predicts, dim=0).cpu().detach().numpy()
+        tar_x_v = tar[:n, 0]
+        tar_y_v = tar[:n, 1]
+        pre_x_v = pre[:n, 0]
+        pre_y_v = pre[:n, 1]
+
+        plt.subplot(1, 3, 1)
+        plt.plot(range(0, self.config.maxEpochs), self.Loss_train)
+        plt.title("Loss")
+        plt.subplot(1, 3, 2)
+        plt.plot(range(0, len(tar_x_v)), tar_x_v, label='tar_x_v')
+        plt.plot(range(0, len(pre_x_v)), pre_x_v, label='pre_x_v')
+        plt.legend()
+        plt.subplot(1, 3, 3)
+        plt.plot(range(0, len(tar_y_v)), tar_y_v, label='tar_y_v')
+        plt.plot(range(0, len(pre_y_v)), pre_x_v, label='pre_y_v')
+        plt.legend()
+        plt.show()

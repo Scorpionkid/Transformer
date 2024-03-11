@@ -1,17 +1,20 @@
 import torch
+import torch.nn as nn
 import logging
 import datetime
 import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
 from src.utils import set_seed, resample_data, spike_to_counts2
-from src.utils import load_mat, spike_to_counts1, save_data2txt, gaussian_nomalization
+from src.utils import load_mat, spike_to_counts1, save_data2txt, gaussian_nomalization, pad_sequences
 from src.model import Transformer
 from src.trainer import Trainer, TrainerConfig
 from torch.utils.data import Dataset, random_split, Subset
 import os
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+os.environ['NUMEXPR_MAX_THREADS'] = '16'
+
 
 
 
@@ -31,13 +34,12 @@ dataFileType = 0
 # hyperparameter
 epochSaveFrequency = 10    # every ten epoch
 epochSavePath = "pth/trained-"
-batchSize = 32
-nEpoch = 1
+batchSize = 8
+nEpoch = 50
 modelLevel = "word"     # "character" or "word"
-ctxLen = 128    # the length of the sequence
-out_dim = 2   # the output dim
+seq_size = 64    # the length of the sequence
+out_size = 2   # the output dim
 embed_size = 256
-gap_num = 10    # the time slice
 
 # learning rate
 lrInit = 6e-4 if modelType == "Transormer" else 4e3   # Transormer can use higher learning rate
@@ -54,12 +56,13 @@ print('loading data... ' + dataFile)
 
 
 class Dataset(Dataset):
-    def __init__(self, ctx_len, vocab_size, spike, target):
+    def __init__(self, seq_size, out_size, spike, target, train_mode=True):
         print("loading data...", end=' ')
-        self.ctxLen = ctx_len
-        self.vocabSize = vocab_size
+        self.seq_size = seq_size
+        self.out_size = out_size
         self.x = spike
         self.y = target
+        self.train_mode = train_mode
 
         # Gaussian normalization
         # self.x, self.y = gaussian_nomalization(x, y)
@@ -69,103 +72,97 @@ class Dataset(Dataset):
 
 
     def __len__(self):
-        return len(self.x)
-
-    def __getitem__(self, item):
-        # i = np.random.randint(0, len(self.x) - self.ctxLen)
-        if torch.is_tensor(item):
-            idx = item.tolist()
-            x = self.x[idx]
-            y = self.y[idx]
-        else:
-            i = item % (len(self.x) - self.ctxLen)
-            x = torch.tensor(self.x[i:i + self.ctxLen, :], dtype=torch.float32)
-            y = torch.tensor(self.y[i:i + self.ctxLen, :], dtype=torch.float32)
-        # 用于测试的简化版本
-        # x = torch.randn(self.ctxLen, 96)  # 假设数据形状为[ctxLen, 96]
-        # y = torch.randn(self.ctxLen, 2)  # 假设标签形状为[ctxLen, 2]
-        return x, y
-
-class Dataset_list(Dataset):
-    def __init__(self, ctx_len, vocab_size, x, y):
-        self.ctxLen = ctx_len
-        self.vocabSize = vocab_size
-        self.x = x
-        self.y = y
-
-    def __len__(self):
-        return len(self.x)
+        return (len(self.x) + self.seq_size - 1) // self.seq_size
 
     def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
+        start_idx = idx * self.seq_size
+        end_idx = start_idx + self.seq_size
+        requires_grad = True if self.train_mode == True else False
 
-        x = self.x[idx]
-        y = self.y[idx]
+        # 处理最后一个可能不完整的序列
+        if end_idx > len(self.x):
+            # transformer中的padding
+            x_tensor = torch.tensor(self.x[start_idx:len(self.x), :], dtype=torch.float32)
+            y_tensor = torch.tensor(self.y[start_idx:len(self.y), :], dtype=torch.float32)
+            x_padded = pad_sequences(x_tensor, -1, self.seq_size)
+            y_padded = pad_sequences(y_tensor, -1, self.seq_size)
+            x = x_padded.clone().detach().requires_grad_(requires_grad)
+            y = y_padded.clone().detach().requires_grad_(requires_grad)
+        else:
+            x = torch.tensor(self.x[start_idx:end_idx, :], dtype=torch.float32)
+            y = torch.tensor(self.y[start_idx:end_idx, :], dtype=torch.float32)
         return x, y
 
-def split_dataset(ctxLen, out_dim, dataset, train_size):
-    test_size = len(dataset) - train_size
-    train_indices = list(range(0, train_size))
-    test_indices = list(range(train_size, len(dataset)))
-
-    train_x = dataset.x[train_indices]
-    train_y = dataset.y[train_indices]
-    save_data2txt(train_x, 'src_trg_data/train_spike_num.txt')
-    save_data2txt(train_y, 'src_trg_data/train_target_velocity.txt')
-
-    test_x = dataset.x[test_indices]
-    test_y = dataset.y[test_indices]
-    save_data2txt(test_x, 'src_trg_data/test_spike_num.txt')
-    save_data2txt(test_y, 'src_trg_data/test_target_velocity.txt')
-
-    train_dataset = Dataset(ctxLen, out_dim, train_x, train_y)
-    test_dataset = Dataset(ctxLen, out_dim, test_x, test_y)
-
-    return train_dataset, test_dataset
+# def split_dataset(ctxLen, out_dim, dataset, train_size):
+#     test_size = len(dataset) - train_size
+#     train_indices = list(range(0, train_size))
+#     test_indices = list(range(train_size, len(dataset)))
+#
+#     train_x = dataset.x[train_indices]
+#     train_y = dataset.y[train_indices]
+#     save_data2txt(train_x, 'src_trg_data/train_spike_num.txt')
+#     save_data2txt(train_y, 'src_trg_data/train_target_velocity.txt')
+#
+#     test_x = dataset.x[test_indices]
+#     test_y = dataset.y[test_indices]
+#     save_data2txt(test_x, 'src_trg_data/test_spike_num.txt')
+#     save_data2txt(test_y, 'src_trg_data/test_target_velocity.txt')
+#
+#     train_dataset = Dataset(ctxLen, out_dim, train_x, train_y)
+#     test_dataset = Dataset(ctxLen, out_dim, test_x, test_y)
+#
+#     return train_dataset, test_dataset
 
 spike, y, t = load_mat(dataPath+dataFile)
 # y = resample_data(y, 4, 1)
 # new_time = np.linspace(t[0, 0], t[0, -1], len(y))
 # spike, target = spike_to_counts2(spike, y, np.transpose(new_time), gap_num)
 spike, target = spike_to_counts1(spike, y, t[0])
-# spike = np.transpose(spike)
 
-# spike = np.load('data/indy_20160622_01_processed_spike.npy')
-# target = np.load('data/indy_20160622_01_processed_target.npy')
+# 计算分割点
+split_idx = int(len(spike) * 0.8)
 
-dataset = Dataset(ctxLen, out_dim, spike, target)
+# 分割数据
+spike_train, spike_test = spike[:split_idx], spike[split_idx:]
+target_train, target_test = target[:split_idx], target[split_idx:]
+
+# 初始化数据集
+train_dataset = Dataset(seq_size, out_size, spike_train, target_train, train_mode=True)
+test_dataset = Dataset(seq_size, out_size, spike_test, target_test, train_mode=False)
 
 # 归一化
-dataset.x, dataset.y = gaussian_nomalization(dataset.x, dataset.y)
+train_dataset.x, train_dataset.y = gaussian_nomalization(train_dataset.x, train_dataset.y)
+test_dataset.x, test_dataset.y = gaussian_nomalization(test_dataset.x, test_dataset.y)
 # 平滑处理
-dataset.x = gaussian_filter1d(dataset.x, 3, axis=0)
-dataset.y = gaussian_filter1d(dataset.y, 3, axis=0)
+train_dataset.x = gaussian_filter1d(train_dataset.x, 3, axis=0)
+test_dataset.x = gaussian_filter1d(test_dataset.x, 3, axis=0)
+train_dataset.y = gaussian_filter1d(train_dataset.y, 3, axis=0)
+test_dataset.y = gaussian_filter1d(test_dataset.y, 3, axis=0)
 
 src_pad_idx = -1
 trg_pad_idx = -1
-src_feature_dim = dataset.x.shape[1]
-trg_feature_dim = dataset.y.shape[1]
-max_length = ctxLen
+src_feature_dim = train_dataset.x.shape[1]
+trg_feature_dim = train_dataset.y.shape[1]
+max_length = seq_size
 
 # 按时间连续性划分数据集
-# trainSize = int(0.8 * len(dataset))
-# train_Dataset, test_Dataset = split_dataset(ctxLen, out_dim, dataset, trainSize)
-train_Dataset = Subset(dataset, range(0, int(0.8 * len(dataset))))
-test_Dataset = Subset(dataset, range(int(0.8 * len(dataset)), len(dataset)))
+# train_Dataset = Subset(dataset, range(0, int(0.8 * len(dataset))))
+# test_Dataset = Subset(dataset, range(int(0.8 * len(dataset)), len(dataset)))
 
 # setting the model parameters
 model = Transformer(src_feature_dim, trg_feature_dim, src_pad_idx, trg_pad_idx, max_length)
 
+criterion = nn.MSELoss()
+
 print('model', modelType, 'epoch', nEpoch, 'batchsz', batchSize, 'betas', betas, 'eps', eps, 'wd', weightDecay,
-      'ctx', ctxLen)
+      'seq_size', seq_size)
 
 tConf = TrainerConfig(modelType=modelType, maxEpochs=nEpoch, batchSize=batchSize, weightDecay=weightDecay,
                       learningRate=lrInit, lrDecay=True, lrFinal=lrFinal, betas=betas, eps=eps,
-                      warmupTokens=0, finalTokens=nEpoch*len(train_Dataset)*ctxLen, numWorkers=0,
+                      warmupTokens=0, finalTokens=nEpoch*len(train_dataset)*seq_size, numWorkers=0,
                       epochSaveFrequency=epochSaveFrequency, epochSavePath=epochSavePath,
-                      out_dim=out_dim, ctxLen=ctxLen, embed_size=embed_size)
-trainer = Trainer(model, train_Dataset, test_Dataset, tConf)
+                      out_dim=out_size, ctxLen=seq_size, embed_size=embed_size, criterion=criterion)
+trainer = Trainer(model, train_dataset, test_dataset, tConf)
 trainer.train()
 trainer.test()
 

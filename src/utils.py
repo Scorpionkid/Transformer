@@ -239,3 +239,28 @@ def min_max_nomalization(x, y):
 
     return x, y
 
+def pad_sequences(batch, src_pad_idx, max_length):
+    """
+    对给定的批次数据进行填充，以确保所有序列的长度一致。
+
+    参数:
+    - batch: 输入的批次数据，假设形状为[N, T, C]，其中T可能小于seq_size。
+    - pad_value: 用于填充的值，默认为-1。
+
+    返回:
+    - padded_batch: 填充后的批次数据，形状为[N, seq_size, C]。
+    """
+    T, C = batch.shape
+    if T == max_length:
+        return batch  # 如果序列长度已经是seq_size，则不需要填充
+
+    # 计算需要填充的长度
+    pad_length = max_length - T
+
+    # 创建填充用的数组
+    pad_tensor = torch.full((pad_length, C), src_pad_idx, dtype=batch.dtype, device=batch.device)
+
+    # 将原始数据和填充数据拼接在一起
+    padded_batch = torch.cat([batch, pad_tensor], dim=0)
+
+    return padded_batch

@@ -200,6 +200,7 @@ class Transformer(nn.Module):
         self.src_pad_idx = src_pad_idx
         self.trg_pad_idx = trg_pad_idx
         self.device = device
+        # self.reg = nn.Linear(embed_size, trg_vocab_size)
 
     def make_src_mask(self, src):
         # src shape: (N, src_len)
@@ -221,6 +222,7 @@ class Transformer(nn.Module):
         trg_mask = self.make_trg_mask(trg)
         enc_src = self.encoder(src, src_mask)
         out = self.decoder(trg, enc_src, src_mask, trg_mask)
+        # out = self.reg(enc_src)
         return out
 
 if __name__ == "__main__":
