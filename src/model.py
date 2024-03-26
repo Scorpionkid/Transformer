@@ -167,7 +167,7 @@ class Decoder(nn.Module):
                 for _ in range(num_layers)
             ]
         )
-        self.fc_out = nn.Linear(embed_size, trg_feature_dim)
+        self.fc_out = nn.Linear(embed_size, 2)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, enc_out, src_mask, trg_mask):
@@ -231,10 +231,10 @@ class Transformer(nn.Module):
     def forward(self, src):
         # src = self.pad_sequences(src, self.src_pad_idx, self.max_length)
         src_mask = self.make_src_mask(src)
-        # trg_mask = self.make_trg_mask(trg)
+        trg_mask = self.make_trg_mask(src)
         enc_src = self.encoder(src, src_mask)
-        # out = self.decoder(trg, enc_src, src_mask, None)
-        out = self.reg(enc_src)
+        out = self.decoder(src, enc_src, src_mask, trg_mask)
+        # out = self.reg(enc_src)
         return out
 
     def get_optimizer_and_scheduler(self, config):

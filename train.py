@@ -25,8 +25,8 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(name)s - %(message)s
 
 # data
 modelType = "Transormer"
-dataFile = "indy_20160624_03.mat"
-dataPath = "data/"
+dataFile = "indy_20160627_01.mat"
+dataPath = "../data/Makin/"
 dataFileCoding = "utf-8"
 # use 0 for char-level english and 1 for chinese. Only affects some Transormer hyperparameters
 dataFileType = 0
@@ -34,10 +34,10 @@ dataFileType = 0
 # hyperparameter
 epochSaveFrequency = 10    # every ten epoch
 epochSavePath = "pth/trained-"
-batchSize = 8
+batchSize = 32
 nEpoch = 50
 modelLevel = "word"     # "character" or "word"
-seq_size = 64    # the length of the sequence
+seq_size = 128    # the length of the sequence
 out_size = 2   # the output dim
 embed_size = 256
 
@@ -93,26 +93,6 @@ class Dataset(Dataset):
             y = torch.tensor(self.y[start_idx:end_idx, :], dtype=torch.float32)
         return x, y
 
-# def split_dataset(ctxLen, out_dim, dataset, train_size):
-#     test_size = len(dataset) - train_size
-#     train_indices = list(range(0, train_size))
-#     test_indices = list(range(train_size, len(dataset)))
-#
-#     train_x = dataset.x[train_indices]
-#     train_y = dataset.y[train_indices]
-#     save_data2txt(train_x, 'src_trg_data/train_spike_num.txt')
-#     save_data2txt(train_y, 'src_trg_data/train_target_velocity.txt')
-#
-#     test_x = dataset.x[test_indices]
-#     test_y = dataset.y[test_indices]
-#     save_data2txt(test_x, 'src_trg_data/test_spike_num.txt')
-#     save_data2txt(test_y, 'src_trg_data/test_target_velocity.txt')
-#
-#     train_dataset = Dataset(ctxLen, out_dim, train_x, train_y)
-#     test_dataset = Dataset(ctxLen, out_dim, test_x, test_y)
-#
-#     return train_dataset, test_dataset
-
 spike, y, t = load_mat(dataPath+dataFile)
 # y = resample_data(y, 4, 1)
 # new_time = np.linspace(t[0, 0], t[0, -1], len(y))
@@ -134,15 +114,15 @@ test_dataset = Dataset(seq_size, out_size, spike_test, target_test, train_mode=F
 train_dataset.x, train_dataset.y = gaussian_nomalization(train_dataset.x, train_dataset.y)
 test_dataset.x, test_dataset.y = gaussian_nomalization(test_dataset.x, test_dataset.y)
 # 平滑处理
-train_dataset.x = gaussian_filter1d(train_dataset.x, 3, axis=0)
-test_dataset.x = gaussian_filter1d(test_dataset.x, 3, axis=0)
-train_dataset.y = gaussian_filter1d(train_dataset.y, 3, axis=0)
-test_dataset.y = gaussian_filter1d(test_dataset.y, 3, axis=0)
+# train_dataset.x = gaussian_filter1d(train_dataset.x, 3, axis=0)
+# test_dataset.x = gaussian_filter1d(test_dataset.x, 3, axis=0)
+# train_dataset.y = gaussian_filter1d(train_dataset.y, 3, axis=0)
+# test_dataset.y = gaussian_filter1d(test_dataset.y, 3, axis=0)
 
 src_pad_idx = -1
 trg_pad_idx = -1
 src_feature_dim = train_dataset.x.shape[1]
-trg_feature_dim = train_dataset.y.shape[1]
+trg_feature_dim = train_dataset.x.shape[1]
 max_length = seq_size
 
 # 按时间连续性划分数据集

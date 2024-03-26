@@ -4,6 +4,7 @@ import random
 import numpy as np
 from torch.nn import functional as F
 from scipy.interpolate import interp1d
+from pynwb import NWBHDF5IO
 
 
 def top_k_logits(logits, k):
@@ -143,6 +144,82 @@ def load_mat(mat_file_path):
     time = np.array(time)
 
     return x, np.transpose(y), time
+
+# def loadNwbFile(nwb_file_path):
+def spike_to_counts_nwb(spike_times, spike_times_index, y):
+    start_time = spike_dict["spike_times"].min()
+    end_time = spike_dict["spike_times"].max()
+
+    # 第一部分：处理spike数据
+    num_intervals = int((end_time - start_time) / 0.01) + 1  # 使用秒作为单位
+    spike_matrix = np.zeros((num_intervals, len(spike_times_index)))  # 初始化spike矩阵
+
+    for channel_idx, channel_spikes in enumerate(spike_times_index):
+        for spike_time in channel_spikes:
+            if spike_time >= start_time:
+                interval_idx = int((spike_time - start_time) / 0.01)
+                if interval_idx < num_intervals:  # 确保索引在矩阵范围内
+                    spike_matrix[interval_idx, channel_idx] += 1
+
+    # 第二部分：处理y和t数据生成target矩阵
+    target_matrix = np.zeros((num_intervals, 2))  # 初始化target矩阵
+
+    for i in range(num_intervals):
+        start_time = spike_times[0] + i * 0.1
+        end_time = start_time + 0.1
+        start_idx = np.searchsorted(spike_times, start_time, side='left')
+        end_idx = np.searchsorted(spike_times, end_time, side='right') - 1
+        # 保证索引不越界
+        start_idx = max(0, min(start_idx, len(y) - 1))
+        end_idx = max(0, min(end_idx, len(y) - 1))
+        velocity = y[end_idx] - y[start_idx]  # 速度计算基于差分
+        target_matrix[i] = velocity
+
+    return spike_matrix, target_matrix
+
+
+
+if __name__ == '__main__':
+    nwb_file_path = '../../data/NLB_RTT/sub-Indy_desc-train_behavior+ecephys.nwb'
+    with NWBHDF5IO(nwb_file_path, 'r') as io:
+        nwbfile = io.read()
+        # 获取processing属性的behavior模块
+        behavior = nwbfile.processing.get('behavior')
+        intervals = nwbfile.intervals.get('trials')
+        units = nwbfile.units
+        processing_dict = {}
+        intervals_dict = {}
+        spike_dict = {}
+        # 打印数据接口
+        print("Data interfaces in 'behavior':", behavior.data_interfaces.keys())
+
+        for name, data_interface in behavior.data_interfaces.items():
+            print(f"Processing {name}......")
+            processing_dict[name] = data_interface.data[:]
+
+        # 打印列名
+        print("Column names in 'intervals':", intervals.colnames)
+
+        # 遍历列名和列数据
+        for name in intervals.colnames:
+            column_data = getattr(intervals, name)
+            print(f"Data for {name}......")
+            intervals_dict[name] = column_data[:]
+
+        # 打印列名
+        print("Column names in 'units':", units.colnames)
+
+        # 遍历列名和列数据
+        for name in units.colnames:
+            column_data = getattr(units, name)
+            print(f"Data for {name}......")
+            if name == "spike_times" or name == "spike_times_index":
+                spike_dict[name] = column_data[:]
+        spike_dict["spike_times_index"] = units.spike_times_index[:]
+        spike, velocity = spike_to_counts_nwb(spike_dict["spike_times"], spike_dict["spike_times_index"], processing_dict["cursor_pos"])
+    print(processing_dict)
+    # return spikes, cursor_pos
+
 
 def spike_to_counts2(spike, y, time, gap_num):
     if (len(time) - 1) % gap_num == 0:

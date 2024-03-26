@@ -6,7 +6,7 @@ from torch.utils.data.dataloader import DataLoader
 from torcheval.metrics.functional import r2_score
 import matplotlib.pyplot as plt
 
-from src.utils import save_data2txt
+from .utils import save_data2txt
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,9 @@ class TrainerConfig:
 class Trainer:
     def __init__(self, model, train_dataset, test_dataset, config):
         self.Loss_train = []
+        self.r2_train = []
+        self.Loss_test = []
+        self.r2_test = []
         self.model = model
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
@@ -88,7 +91,7 @@ class Trainer:
                     # loss = loss.mean()
                     r2_s = r2_score(out.view(-1, 2), y.view(-1, 2))
                     totalLoss += loss.item()
-                    totalR2s += r2_s
+                    totalR2s += r2_s.item()
                     loss.backward()
                     torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradNormClip)
                     optimizer.step()
@@ -120,6 +123,7 @@ class Trainer:
                         f"epoch {epoch+1} progress {progress * 100.0:.2f}% iter {it + 1}: r2_score "
                         f"{totalR2s / (it + 1):.2f} loss {totalLoss / (it + 1):.4f} lr {lr:e}")
         self.Loss_train.append(totalLoss / ct)
+        self.r2_train.append(totalR2s / ct)
         return predicts, targets
 
     def train(self):
@@ -173,9 +177,13 @@ class Trainer:
                 # loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
                 r2_s = r2_score(out.view(-1, 2), y.view(-1, 2))
             totalLoss += loss.item()
-            totalR2s += r2_s
-            print(f"Batch Loss: {loss:.4f}, R2_score: {r2_s:.2f}%")
+            totalR2s += r2_s.item()
+            self.Loss_test.append(loss.item())
+            self.r2_test.append(r2_s.item())
+            print(f"Batch Loss: {loss:.4f} R2_score: {r2_s:.4f}")
 
+        MeanLoss = totalLoss / ct
+        MeanR2 = totalR2s / ct
         print(f"Test Mean Loss: {totalLoss / ct:.4f}, R2_score: {totalR2s / ct:.4f},  Num_iter: {ct}")
 
         save_data2txt(predicts, 'src_trg_data/test_predict.txt')
@@ -189,15 +197,28 @@ class Trainer:
         pre_x_v = pre[:n, 0]
         pre_y_v = pre[:n, 1]
 
-        plt.subplot(1, 3, 1)
-        plt.plot(range(0, self.config.maxEpochs), self.Loss_train)
-        plt.title("Loss")
-        plt.subplot(1, 3, 2)
-        plt.plot(range(0, len(tar_x_v)), tar_x_v, label='tar_x_v')
-        plt.plot(range(0, len(pre_x_v)), pre_x_v, label='pre_x_v')
-        plt.legend()
-        plt.subplot(1, 3, 3)
-        plt.plot(range(0, len(tar_y_v)), tar_y_v, label='tar_y_v')
-        plt.plot(range(0, len(pre_y_v)), pre_x_v, label='pre_y_v')
-        plt.legend()
+        fig, axs = plt.subplots(3, 2, figsize=(10, 15))
+
+        axs[0,0].plot(range(0, self.config.maxEpochs), self.Loss_train)
+        axs[0,0].set_title("loss_train")
+        axs[0,1].plot(range(0, self.config.maxEpochs), self.r2_train)
+        axs[0,1].set_title("r2_train")
+
+        axs[1,0].plot(range(0, ct), self.Loss_test)
+        axs[1,0].set_title(f"Loss_test\nMean loss: {MeanLoss:.4f}")
+
+        axs[1,1].plot(range(0, ct), self.r2_test)
+        axs[1,1].set_title(f"r2_test\nMean r2s: {MeanR2:.4f}")
+
+
+        axs[2,0].plot(range(0, len(tar_x_v)), tar_x_v, label='tar_x_v')
+        axs[2,0].plot(range(0, len(pre_x_v)), pre_x_v, label='pre_x_v')
+        axs[2,0].legend()  # 调用特定轴的legend方法
+
+        axs[2,1].plot(range(0, len(tar_y_v)), tar_y_v, label='tar_y_v')
+        axs[2,1].plot(range(0, len(pre_y_v)), pre_y_v, label='pre_y_v')
+        axs[2,1].legend()  # 调用特定轴的legend方法
+
+        # 自动调整子图间距
+        plt.tight_layout()
         plt.show()
