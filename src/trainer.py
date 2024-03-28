@@ -1,12 +1,13 @@
 import math
 import torch
 import logging
+import numpy as np
 from tqdm.auto import tqdm
 from torch.utils.data.dataloader import DataLoader
 from torcheval.metrics.functional import r2_score
 import matplotlib.pyplot as plt
 
-from .utils import save_data2txt
+from .utils import save_data2txt, load_npy
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,7 @@ class Trainer:
         self.r2_train = []
         self.Loss_test = []
         self.r2_test = []
+        self.results = {}
         self.model = model
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
@@ -61,7 +63,7 @@ class Trainer:
 
         return runName
 
-    def train_epoch(self, split, epoch, model, config, optimizer, scheduler):
+    def train_epoch(self, split, loader, epoch, model, config, optimizer, scheduler):
         predicts = []
         targets = []
         totalLoss = 0
@@ -69,8 +71,6 @@ class Trainer:
         self.t = split == 'train'
         model.train(self.t)
         data = self.train_dataset
-        loader = DataLoader(data, shuffle=True, pin_memory=True, batch_size=config.batchSize,
-                            num_workers=config.numWorkers)
 
         pbar = tqdm(enumerate(loader), total=len(loader),
                     bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}') if self.t else enumerate(loader)
@@ -81,8 +81,8 @@ class Trainer:
 
             with torch.set_grad_enabled(self.t):
                 out = model(x)
-                predicts.append(out.view(-1, 2))
-                targets.append(y.view(-1, 2))
+                predicts.append(out.view(-1, 2).cpu().detach())
+                targets.append(y.view(-1, 2).cpu().detach())
 
                 if self.t:
                     ct += 1
@@ -133,7 +133,9 @@ class Trainer:
         optimizer, scheduler = rawModel.get_optimizer_and_scheduler(config)
 
         for epoch in range(config.maxEpochs):
-            predicts, targets = self.train_epoch('train', epoch, model, config, optimizer, scheduler)
+            loader = DataLoader(self.train_dataset, shuffle=True, pin_memory=True, batch_size=config.batchSize,
+                                num_workers=config.numWorkers)
+            predicts, targets = self.train_epoch('train', loader, epoch, model, config, optimizer, scheduler)
             # print(self.avg_train_loss / len(self.train_dataset))
 
             if (config.epochSaveFrequency > 0 and epoch % config.epochSaveFrequency == 0) or (epoch ==
@@ -149,7 +151,6 @@ class Trainer:
     def test(self):
         model, config = self.model, self.config
         model.eval()
-
         predicts = []
         targets = []
         self.t = False
@@ -158,7 +159,7 @@ class Trainer:
         totalLoss = 0
         totalR2s = 0
         loader = DataLoader(data, shuffle=True, pin_memory=True,
-                            batch_size=config.batchSize,
+                            batch_size=len(data),
                             num_workers=config.numWorkers)
 
         pbar = tqdm(enumerate(loader), total=len(loader),
@@ -167,10 +168,10 @@ class Trainer:
         for it, (x, y) in pbar:
             ct += 1
             x = x.to(self.device)  # place data on the correct device
-            y = y.to(self.device)
 
             with torch.set_grad_enabled(self.t):
                 out = model(x)  # forward the model
+                out = out.cpu().detach()
                 predicts.append(out.view(-1, 2))
                 targets.append(y.view(-1, 2))
                 loss = self.config.criterion(out.view(-1, 2), y.view(-1, 2))
@@ -186,8 +187,16 @@ class Trainer:
         MeanR2 = totalR2s / ct
         print(f"Test Mean Loss: {totalLoss / ct:.4f}, R2_score: {totalR2s / ct:.4f},  Num_iter: {ct}")
 
-        save_data2txt(predicts, 'src_trg_data/test_predict.txt')
-        save_data2txt(targets, 'src_trg_data/test_target.txt')
+        # save_data2txt(predicts, 'src_trg_data/test_predict.txt')
+        # save_data2txt(targets, 'src_trg_data/test_target.txt')
+
+
+        # 求self.Loss_train的平均值
+        self.results['test_loss'] = MeanLoss
+        self.results['test_r2'] = MeanR2
+        self.results['train_loss'] = np.mean(self.Loss_train)
+        self.results['train_r2'] = np.mean(self.r2_train)
+        return self.results
 
         n = 10000
         tar = torch.cat(targets, dim=0).cpu().detach().numpy()

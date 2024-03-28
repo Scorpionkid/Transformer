@@ -1,7 +1,10 @@
 import h5py
+import openpyxl
 import torch
 import random
 import numpy as np
+import os
+import pandas as pd
 from torch.nn import functional as F
 from scipy.interpolate import interp1d
 from pynwb import NWBHDF5IO
@@ -145,10 +148,9 @@ def load_mat(mat_file_path):
 
     return x, np.transpose(y), time
 
-# def loadNwbFile(nwb_file_path):
 def spike_to_counts_nwb(spike_times, spike_times_index, y):
-    start_time = spike_dict["spike_times"].min()
-    end_time = spike_dict["spike_times"].max()
+    start_time = spike_times.min()
+    end_time = spike_times.max()
 
     # 第一部分：处理spike数据
     num_intervals = int((end_time - start_time) / 0.01) + 1  # 使用秒作为单位
@@ -179,7 +181,7 @@ def spike_to_counts_nwb(spike_times, spike_times_index, y):
 
 
 
-if __name__ == '__main__':
+def loadNwbFile(nwb_file_path):
     nwb_file_path = '../../data/NLB_RTT/sub-Indy_desc-train_behavior+ecephys.nwb'
     with NWBHDF5IO(nwb_file_path, 'r') as io:
         nwbfile = io.read()
@@ -341,3 +343,46 @@ def pad_sequences(batch, src_pad_idx, max_length):
     padded_batch = torch.cat([batch, pad_tensor], dim=0)
 
     return padded_batch
+
+def load_npy(file_path):
+    data = np.load(file_path, allow_pickle=True)
+    return data
+
+def save_to_excel(results, excel_path, model_name, epoch, dimensions):
+    # 创建一个包含所需列的新行DataFrame
+    columns = ['filename', 'model', 'epoch'] + dimensions
+    df_rows = []
+
+    for result in results:
+        file_data = [result['file_name'], model_name, epoch] + [result.get(dim, '') for dim in dimensions]
+        df_rows.append(file_data)
+
+    df_results = pd.DataFrame(df_rows, columns=columns)
+
+    if not os.path.isfile(excel_path):
+        # 文件不存在，创建并写入列名和数据
+        with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            df_results.to_excel(writer, sheet_name='Sheet1', index=False)
+    else:
+        # 文件存在，追加数据
+        with pd.ExcelWriter(excel_path, engine='openpyxl', mode='a', if_sheet_exists="overlay") as writer:
+            # 获取当前工作表的最后一行索引
+            last_row = writer.book.active.max_row
+            df_results.to_excel(writer, sheet_name='Sheet1', index=False, startrow=last_row + 1)
+
+    # try:
+    #     # 如果文件已存在，则追加数据
+    #     writer = pd.ExcelWriter(excel_path, engine='openpyxl', mode='a', if_sheet_exists="overlay")
+    #     df_new_row.to_excel(writer, sheet_name=writer.book.active.title, index=False, startrow=len(pd.read_excel(excel_path, sheet_name='Sheet1')) + 1)
+    #     writer.close()
+    # except FileNotFoundError:
+    #     # 文件不存在，直接创建并写入
+    #     writer = pd.ExcelWriter(excel_path, engine='openpyxl')
+    #     df_new_row.to_excel(writer, sheet_name='Sheet1', index=False)
+    #     writer.close()
+
+
+
+
+
+
