@@ -33,10 +33,10 @@ class TrainerConfig:
 
 
 class Trainer:
-    def __init__(self, model, train_dataset, test_dataset, config):
+    def __init__(self, model, train_dataloader, test_dataloader, config):
         self.model = model
-        self.train_dataset = train_dataset
-        self.test_dataset = test_dataset
+        self.train_dataloader = train_dataloader
+        self.test_dataloader = test_dataloader
         self.t = False
         self.config = config
         self.avg_test_loss = 0
@@ -62,12 +62,9 @@ class Trainer:
         totalR2s = 0
         self.t = split == 'train'
         model.train(self.t)
-        data = self.train_dataset
-        loader = DataLoader(data, shuffle=False, pin_memory=True, batch_size=config.batchSize,
-                            num_workers=config.numWorkers)
 
-        pbar = tqdm(enumerate(loader), total=len(loader),
-                    bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}') if self.t else enumerate(loader)
+        pbar = tqdm(enumerate(self.train_dataloader), total=len(self.train_dataloader),
+                    bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}') if self.t else enumerate(self.train_dataloader)
 
         for it, (x, y) in pbar:
             x = x.to(self.device)
@@ -75,8 +72,8 @@ class Trainer:
 
             with torch.set_grad_enabled(self.t):
                 pre, loss, r2_s = model(x, y)
-                predicts.append(pre.view(-1, 2))
-                targets.append(y.view(-1, 2))
+                predicts.append(pre.detach().cpu().view(-1, 2))
+                targets.append(y.detach().cpu().view(-1, 2))
                 loss = loss.mean()
                 totalLoss += loss.item()
                 totalR2s += r2_s
@@ -112,7 +109,7 @@ class Trainer:
 
                     pbar.set_description(
                         f"epoch {epoch+1} progress {progress * 100.0:.2f}% iter {it + 1}: r2_score "
-                        f"{totalR2s / (it + 1):.2f} loss {totalLoss / (it + 1):.4f} lr {lr:e}")
+                        f"{r2_s:.2f} loss {loss.item():.4f} lr {lr:e}")
 
         return predicts, targets
 
@@ -143,16 +140,12 @@ class Trainer:
         predicts = []
         targets = []
         self.t = False
-        model.train(self.t)
-        data = self.test_dataset
+        # model.train(self.t)
         totalLoss = 0
         totalR2s = 0
-        loader = DataLoader(data, shuffle=False, pin_memory=True,
-                            batch_size=config.batchSize,
-                            num_workers=config.numWorkers)
 
-        pbar = tqdm(enumerate(loader), total=len(loader),
-                    bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}') if self.t else enumerate(loader)
+        pbar = tqdm(enumerate(self.test_dataloader), total=len(self.test_dataloader),
+                    bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}') if self.t else enumerate(self.test_dataloader)
 
         for it, (x, y) in pbar:
             x = x.to(self.device)  # place data on the correct device
@@ -160,8 +153,8 @@ class Trainer:
 
             with torch.set_grad_enabled(self.t):
                 pre, loss, r2_s = model(x, y)  # forward the model
-                predicts.append(pre.view(-1, 2))
-                targets.append(y.view(-1, 2))
+                predicts.append(pre.detach().cpu().view(-1, 2))
+                targets.append(y.detach().cpu().view(-1, 2))
                 loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
 
             totalLoss += loss.item()
