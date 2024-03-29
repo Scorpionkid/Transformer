@@ -37,7 +37,7 @@ dataFileType = 0
 epochSaveFrequency = 10    # every ten epoch
 epochSavePath = "pth/trained-"
 batchSize = 32
-nEpoch = 50
+nEpoch = 30
 modelLevel = "word"     # "character" or "word"
 seq_size = 128    # the length of the sequence
 out_size = 2   # the output dim
@@ -129,8 +129,8 @@ for spike_file, target_file in zip(spike_files, target_files):
     test_dataset = Dataset(seq_size, out_size, spike_test, target_test, train_mode=False)
 
     # 归一化
-    train_dataset.x, train_dataset.y = gaussian_nomalization(train_dataset.x, train_dataset.y)
-    test_dataset.x, test_dataset.y = gaussian_nomalization(test_dataset.x, test_dataset.y)
+    # train_dataset.x, train_dataset.y = gaussian_nomalization(train_dataset.x, train_dataset.y)
+    # test_dataset.x, test_dataset.y = gaussian_nomalization(test_dataset.x, test_dataset.y)
     # 平滑处理
     # train_dataset.x = gaussian_filter1d(train_dataset.x, 3, axis=0)
     # test_dataset.x = gaussian_filter1d(test_dataset.x, 3, axis=0)
@@ -167,5 +167,5 @@ for spike_file, target_file in zip(spike_files, target_files):
     results.append(result)
     torch.save(model, epochSavePath + trainer.get_runName() + '-' + datetime.datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
                + '.pth')
-    print('done')
-save_to_excel(results, excel_path + os.path.basename(npy_folder_path) + '-' + modelType + '-' + 'results.xlsx', modelType, nEpoch, dimensions)
+    print(prefix + 'done')
+save_to_excel(results, excel_path + os.path.basename(npy_folder_path) + '-' + modelType + '-'  + str(nEpoch) + '-' + 'results.xlsx', modelType, nEpoch, dimensions)

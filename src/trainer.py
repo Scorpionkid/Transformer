@@ -131,10 +131,9 @@ class Trainer:
         rawModel = model.module if hasattr(self.model, "module") else model
         rawModel = rawModel.float()
         optimizer, scheduler = rawModel.get_optimizer_and_scheduler(config)
-
+        loader = DataLoader(self.train_dataset, shuffle=True, pin_memory=True, batch_size=config.batchSize,
+                            num_workers=config.numWorkers)
         for epoch in range(config.maxEpochs):
-            loader = DataLoader(self.train_dataset, shuffle=True, pin_memory=True, batch_size=config.batchSize,
-                                num_workers=config.numWorkers)
             predicts, targets = self.train_epoch('train', loader, epoch, model, config, optimizer, scheduler)
             # print(self.avg_train_loss / len(self.train_dataset))
 
@@ -181,7 +180,7 @@ class Trainer:
             totalR2s += r2_s.item()
             self.Loss_test.append(loss.item())
             self.r2_test.append(r2_s.item())
-            print(f"Batch Loss: {loss:.4f} R2_score: {r2_s:.4f}")
+            # print(f"Batch Loss: {loss:.4f} R2_score: {r2_s:.4f}")
 
         MeanLoss = totalLoss / ct
         MeanR2 = totalR2s / ct
