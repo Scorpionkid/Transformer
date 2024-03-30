@@ -25,11 +25,11 @@ dataFileCoding = "utf-8"
 # use 0 for char-level english and 1 for chinese. Only affects some Transormer hyperparameters
 dataFileType = 0
 
-# hyperparameter
+# hyperparameters
 epochSaveFrequency = 10    # every ten epoch
 epochSavePath = "pth/trained-"
 batchSize = 64
-nEpoch = 30
+nEpoch = 2
 modelLevel = "word"     # "character" or "word"
 ctxLen = 256    # the length of the sequence
 out_dim = 2   # the output dim
@@ -75,7 +75,7 @@ train_dataset = Subset(dataset, range(0, int(len(dataset) * 0.8)))
 test_dataset = Subset(dataset, range(int(len(dataset) * 0.8), len(dataset)))
 
 train_dataloader = DataLoader(train_dataset, shuffle=True, pin_memory=True, num_workers=numWorkers, batch_size=batchSize)
-test_dataloader = DataLoader(test_dataset, shuffle=False, pin_memory=True, num_workers=numWorkers, batch_size=batchSize)
+test_dataloader = DataLoader(test_dataset, shuffle=False, pin_memory=True, num_workers=numWorkers, batch_size=len(test_dataset))
 
 src_pad_idx = -1
 trg_pad_idx = -1

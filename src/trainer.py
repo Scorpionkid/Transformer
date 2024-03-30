@@ -131,26 +131,25 @@ class Trainer:
 
         predicts = []
         targets = []
-        totalLoss = 0
-        totalR2s = 0
 
         pbar = enumerate(self.test_dataloader)
+
+        with open("train.csv", "a", encoding='utf-8') as file:
+            file.write("test loss, test r2 score\n")
 
         for it, (x, y) in pbar:
             x = x.to(self.device)  # place data on the correct device
             y = y.to(self.device)
 
-            with torch.set_grad_enabled(self.t):
+            with torch.set_grad_enabled(False):
                 pre, loss, r2_s = model(x, y)  # forward the model
                 predicts.append(pre.detach().cpu().view(-1, 2))
                 targets.append(y.detach().cpu().view(-1, 2))
                 loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
-
-            totalLoss += loss.item()
-            totalR2s += r2_s
             print(f"Batch Loss: {loss:.4f} R2_score: {r2_s:.4f}")
 
-        print(f"Test Loss: {totalLoss / (it + 1):.4f}, R2_score: {totalR2s / (it + 1):.4f}")
+        with open("train.csv", "a", encoding='utf-8') as file:
+            file.write(f'{loss:.4f}, {r2_s:.4f}')
 
         # save_data2txt(predicts, 'src_trg_data/test_predict.txt')
         # save_data2txt(targets, 'src_trg_data/test_target.txt')
