@@ -227,18 +227,31 @@ def spike_to_counts1(spike, y, t):
 
     return spike_matrix, target_matrix
 
-def gaussian_nomalization(x, y):
-    x = (x - x.mean()) / x.std()
-    y = (y - y.mean()) / y.std()
+def pad_sequences(batch, src_pad_idx, max_length):
+    """
+    对给定的批次数据进行填充，以确保所有序列的长度一致。
 
-    return x, y
+    参数:
+    - batch: 输入的批次数据，假设形状为[N, T, C]，其中T可能小于seq_size。
+    - pad_value: 用于填充的值，默认为-1。
 
+    返回:
+    - padded_batch: 填充后的批次数据，形状为[N, seq_size, C]。
+    """
+    T, C = batch.shape
+    if T == max_length:
+        return batch  # 如果序列长度已经是seq_size，则不需要填充
 
-def min_max_nomalization(x, y):
-    x = (x - x.min()) / (x.max() - x.min())
-    y = (y - y.min()) / (y.max() - y.min())
+    # 计算需要填充的长度
+    pad_length = max_length - T
 
-    return x, y
+    # 创建填充用的数组
+    pad_tensor = torch.full((pad_length, C), src_pad_idx, dtype=batch.dtype, device=batch.device)
+
+    # 将原始数据和填充数据拼接在一起
+    padded_batch = torch.cat([batch, pad_tensor], dim=0)
+
+    return padded_batch
 
 
 def AllDays_split(data_path):
@@ -317,3 +330,62 @@ def loadAllDays(data_path):
     t = np.concatenate(target, axis=0)
 
     return s, t
+
+    # load spike data
+    for filename in os.listdir(os.path.join(folderPath, name[0])):
+        file_path = os.path.join(folderPath, name[0], filename)
+        temp = np.load(file_path)
+        spike.append(temp)
+
+def Reshape_ctxLen(spike, target, ctx_len):
+    spike = torch.tensor(spike, dtype=torch.float32)
+    target = torch.tensor(target, dtype=torch.float32)
+    length = len(spike)
+
+    if length % ctx_len:
+        batch = length // ctx_len + 1
+    else:
+        batch = length / ctx_len
+
+    short_len = batch * ctx_len - length
+
+    spike = F.pad(spike, (0, 0, 0, short_len), "constant", value=0)
+    target = F.pad(target, (0, 0, 0, short_len), "constant", value=0)
+
+    spike = spike.reshape(batch, ctx_len, -1)
+    target = target.reshape(batch, ctx_len, -1)
+
+    return spike, target
+
+    s = np.concatenate(spike, axis=0)
+    t = np.concatenate(target, axis=0)
+
+def AllDays_split(data_path):
+    folderPath = data_path
+    name = ['spike9/', 'target9/']
+    spike_train = []
+    spike_test = []
+    target_train = []
+    target_test = []
+
+    # load spike data
+    for filename in os.listdir(os.path.join(folderPath, name[0])):
+        file_path = os.path.join(folderPath, name[0], filename)
+        temp = np.load(file_path)
+        spike_train.append(temp[:int(len(temp) * 0.8), :])
+        spike_test.append(temp[int(len(temp) * 0.8):, :])
+
+    # load target data
+    for filename in os.listdir(os.path.join(folderPath, name[1])):
+        file_path = os.path.join(folderPath, name[1], filename)
+        temp = np.load(file_path)
+        target_train.append(temp[:int(len(temp) * 0.8), :])
+        target_test.append(temp[int(len(temp) * 0.8):, :])
+
+    s_train = np.concatenate(spike_train, axis=0)
+    s_test = np.concatenate(spike_test, axis=0)
+    t_train = np.concatenate(target_train, axis=0)
+    t_test = np.concatenate(target_test, axis=0)
+
+
+    return s_train, s_test, t_train, t_test
