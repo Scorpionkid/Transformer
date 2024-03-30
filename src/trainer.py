@@ -2,9 +2,6 @@ import math
 import torch
 import logging
 from tqdm.auto import tqdm
-from torch.utils.data.dataloader import DataLoader
-
-from src.utils import save_data2txt
 
 logger = logging.getLogger(__name__)
 
@@ -33,11 +30,10 @@ class TrainerConfig:
 
 
 class Trainer:
-    def __init__(self, model, train_dataset, test_dataset, config):
+    def __init__(self, model, train_dataloader, test_dataloader, config):
         self.model = model
-        self.train_dataset = train_dataset
-        self.test_dataset = test_dataset
-        self.t = False
+        self.train_dataloader = train_dataloader
+        self.test_dataloader = test_dataloader
         self.config = config
         self.avg_test_loss = 0
         self.tokens = 0     # counter used for learning rate decay
@@ -49,66 +45,59 @@ class Trainer:
 
     def get_runName(self):
         rawModel = self.model.module if hasattr(self.model, "module") else self.model
-        cfg = self.config
+        cfg = rawModel.config
         runName = str(cfg.out_dim) + '-' + str(cfg.ctxLen) + '-' + cfg.modelType + '-' + str(
             cfg.embed_size)
 
         return runName
 
-    def train_epoch(self, split, epoch, model, config, optimizer, scheduler):
+    def train_epoch(self, epoch, model, config, optimizer, scheduler):
         predicts = []
         targets = []
         totalLoss = 0
         totalR2s = 0
-        self.t = split == 'train'
-        model.train(self.t)
-        data = self.train_dataset
-        loader = DataLoader(data, shuffle=False, pin_memory=True, batch_size=config.batchSize,
-                            num_workers=config.numWorkers)
+        model.train(True)
 
-        pbar = tqdm(enumerate(loader), total=len(loader),
-                    bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}') if self.t else enumerate(loader)
+        pbar = tqdm(enumerate(self.train_dataloader), total=len(self.train_dataloader),
+                    bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
 
         for it, (x, y) in pbar:
             x = x.to(self.device)
             y = y.to(self.device)
 
-            with torch.set_grad_enabled(self.t):
+            with torch.set_grad_enabled(True):
                 pre, loss, r2_s = model(x, y)
-                predicts.append(pre.view(-1, 2))
-                targets.append(y.view(-1, 2))
+                predicts.append(pre.detach().cpu().view(-1, 2))
+                targets.append(y.detach().cpu().view(-1, 2))
                 loss = loss.mean()
                 totalLoss += loss.item()
                 totalR2s += r2_s
 
-                if self.t:
-                    model.zero_grad()
-                    loss.backward()
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradNormClip)
-                    optimizer.step()
-                    scheduler.step()
+                model.zero_grad()
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), config.gradNormClip)
+                optimizer.step()
+                scheduler.step()
 
-                    if config.lrDecay:
-                        self.tokens += (y >= 0).sum()
-                        lrFinalFactor = config.lrFinal / config.learningRate
-                        if self.tokens < config.warmupTokens:
-                            # linear warmup
-                            lrMult = lrFinalFactor + (1 - lrFinalFactor) * float(self.tokens) / float(
-                                config.warmupTokens)
-                            progress = 0
-                        else:
-                            # cosine learning rate decay
-                            progress = float(self.tokens - config.warmupTokens) / float(
-                                max(1, config.finalTokens - config.warmupTokens))
-                            # progress = min(progress * 1.1, 1.0) # more fine-tuning with low LR
-                            lrMult = (0.5 + lrFinalFactor / 2) + (0.5 - lrFinalFactor / 2) * math.cos(
-                                math.pi * progress)
-
-                        lr = config.learningRate * lrMult
-                        for paramGroup in optimizer.param_groups:
-                            paramGroup['lr'] = lr
+                if config.lrDecay:
+                    self.tokens += (y >= 0).sum()
+                    lrFinalFactor = config.lrFinal / config.learningRate
+                    if self.tokens < config.warmupTokens:
+                        # linear warmup
+                        lrMult = lrFinalFactor + (1 - lrFinalFactor) * float(self.tokens) / float(
+                            config.warmupTokens)
+                        progress = 0
                     else:
-                        lr = config.learningRate
+                        # cosine learning rate decay
+                        progress = float(self.tokens - config.warmupTokens) / float(
+                            max(1, config.finalTokens - config.warmupTokens))
+                        # progress = min(progress * 1.1, 1.0) # more fine-tuning with low LR
+                        lrMult = (0.5 + lrFinalFactor / 2) + (0.5 - lrFinalFactor / 2) * math.cos(
+                            math.pi * progress)
+
+                    lr = config.learningRate * lrMult
+                    for paramGroup in optimizer.param_groups:
+                        paramGroup['lr'] = lr
 
                     pbar.set_description(
                         f"epoch {epoch+1} progress {progress * 100.0:.2f}% iter {it + 1}: r2_score "
@@ -123,7 +112,7 @@ class Trainer:
         optimizer, scheduler = rawModel.get_optimizer_and_scheduler(config)
 
         for epoch in range(config.maxEpochs):
-            predicts, targets = self.train_epoch('train', epoch, model, config, optimizer, scheduler)
+            predicts, targets = self.train_epoch(epoch, model, config, optimizer, scheduler)
             # print(self.avg_train_loss / len(self.train_dataset))
 
             if (config.epochSaveFrequency > 0 and epoch % config.epochSaveFrequency == 0) or (epoch ==
@@ -142,17 +131,10 @@ class Trainer:
 
         predicts = []
         targets = []
-        self.t = False
-        model.train(self.t)
-        data = self.test_dataset
         totalLoss = 0
         totalR2s = 0
-        loader = DataLoader(data, shuffle=False, pin_memory=True,
-                            batch_size=config.batchSize,
-                            num_workers=config.numWorkers)
 
-        pbar = tqdm(enumerate(loader), total=len(loader),
-                    bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}') if self.t else enumerate(loader)
+        pbar = enumerate(self.test_dataloader)
 
         for it, (x, y) in pbar:
             x = x.to(self.device)  # place data on the correct device
@@ -160,8 +142,8 @@ class Trainer:
 
             with torch.set_grad_enabled(self.t):
                 pre, loss, r2_s = model(x, y)  # forward the model
-                predicts.append(pre.view(-1, 2))
-                targets.append(y.view(-1, 2))
+                predicts.append(pre.detach().cpu().view(-1, 2))
+                targets.append(y.detach().cpu().view(-1, 2))
                 loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
 
             totalLoss += loss.item()

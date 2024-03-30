@@ -1,3 +1,4 @@
+import os
 import h5py
 import torch
 import random
@@ -239,3 +240,80 @@ def min_max_nomalization(x, y):
 
     return x, y
 
+
+def loadAllDays(data_path):
+    folderPath = data_path
+    name = ['spike/', 'target/']
+    spike = []
+    target = []
+
+    # load spike data
+    for filename in os.listdir(os.path.join(folderPath, name[0])):
+        file_path = os.path.join(folderPath, name[0], filename)
+        temp = np.load(file_path)
+        spike.append(temp)
+
+    # load target data
+    for filename in os.listdir(os.path.join(folderPath, name[1])):
+        file_path = os.path.join(folderPath, name[1], filename)
+        temp = np.load(file_path)
+        target.append(temp)
+
+    s = np.concatenate(spike, axis=0)
+    t = np.concatenate(target, axis=0)
+
+    return s, t
+
+
+def Reshape_ctxLen(spike, target, ctx_len):
+    spike = torch.tensor(spike, dtype=torch.float32)
+    target = torch.tensor(target, dtype=torch.float32)
+    length = len(spike)
+
+    if length % ctx_len:
+        batch = length // ctx_len + 1
+    else:
+        batch = length / ctx_len
+
+    short_len = batch * ctx_len - length
+
+    spike = F.pad(spike, (0, 0, 0, short_len), "constant", value=0)
+    target = F.pad(target, (0, 0, 0, short_len), "constant", value=0)
+
+    spike = spike.reshape(batch, ctx_len, -1)
+    target = target.reshape(batch, ctx_len, -1)
+
+    return spike, target
+
+
+def AllDays_split(data_path):
+    folderPath = data_path
+    name = ['spike9/', 'target9/']
+    spike_train = []
+    spike_test = []
+    target_train = []
+    target_test = []
+
+    # load spike data
+    for filename in os.listdir(os.path.join(folderPath, name[0])):
+        file_path = os.path.join(folderPath, name[0], filename)
+        temp = np.load(file_path)
+        spike_train.append(temp[:int(len(temp) * 0.8), :])
+        spike_test.append(temp[int(len(temp) * 0.8):, :])
+
+    # load target data
+    for filename in os.listdir(os.path.join(folderPath, name[1])):
+        file_path = os.path.join(folderPath, name[1], filename)
+        temp = np.load(file_path)
+        target_train.append(temp[:int(len(temp) * 0.8), :])
+        target_test.append(temp[int(len(temp) * 0.8):, :])
+
+    s_train = np.concatenate(spike_train, axis=0)
+    s_test = np.concatenate(spike_test, axis=0)
+    t_train = np.concatenate(target_train, axis=0)
+    t_test = np.concatenate(target_test, axis=0)
+
+    s = np.concatenate((s_train, s_test), axis=0)
+    t = np.concatenate((t_train, t_test), axis=0)
+
+    return s, t
