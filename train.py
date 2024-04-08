@@ -14,8 +14,6 @@ import os
 os.environ['NUMEXPR_MAX_THREADS'] = '16'
 
 
-
-
 set_seed(42)
 np.set_printoptions(precision=4, suppress=True, linewidth=200)
 logging.basicConfig(format="%(asctime)s - %(levelname)s - %(name)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S",
@@ -24,7 +22,7 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(name)s - %(message)s
 # data
 modelType = "Transormer"
 dataFile = "Makin"
-dataPath = "../Makin/Makin_origin_npy/"
+dataPath = "../Makin/Makin_processed_npy/"
 excel_path = 'results/'
 dataFileCoding = "utf-8"
 # use 0 for char-level english and 1 for chinese. Only affects some Transormer hyperparameters
@@ -33,10 +31,10 @@ dataFileType = 0
 # hyperparameter
 epochSaveFrequency = 10    # every ten epoch
 epochSavePath = "pth/trained-"
-batchSize = 32
-nEpoch = 3
+batchSize = 128
+nEpoch = 50
 modelLevel = "word"     # "character" or "word"
-seq_size = 128    # the length of the sequence
+seq_size = 256    # the length of the sequence
 out_size = 2   # the output dim
 embed_size = 256
 input_size = 96
@@ -53,6 +51,9 @@ epochLengthFixed = 10000    # make every epoch very short, so we can see the tra
 
 # loading data
 print('loading data... ' + dataFile)
+with open("train.csv", "a", encoding="utf-8") as file:
+    file.write(dataPath + "\n")
+    file.write("batch size " + str(batchSize) + "epoch  " + str(nEpoch) + "sequence len  " + str(seq_size) + "\n")
 
 
 class Dataset(Dataset):
@@ -98,9 +99,11 @@ trg_feature_dim = train_dataset.x.shape[-1]
 max_length = seq_size
 
 train_dataloader = DataLoader(train_dataset, shuffle=True, pin_memory=True, num_workers=numWorkers, batch_size=batchSize)
-test_dataloader = DataLoader(test_dataset, shuffle=False, pin_memory=True, num_workers=numWorkers, batch_size=len(test_dataset))
+test_dataloader = DataLoader(test_dataset, shuffle=False, pin_memory=True, num_workers=numWorkers, batch_size=batchSize)
 
 model = Transformer(src_feature_dim, trg_feature_dim, src_pad_idx, trg_pad_idx, max_length)
+
+print("number of parameters: " + str(sum(p.numel() for p in model.parameters())) + "\n")
 
 criterion = nn.MSELoss()
 

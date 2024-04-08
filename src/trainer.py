@@ -24,7 +24,6 @@ class TrainerConfig:
     warmup_steps = 4000
     total_steps = 10000
 
-
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -107,7 +106,6 @@ class Trainer:
                     
         with open("train.csv", 'a', encoding='utf-8') as file:
             file.write(f"{totalLoss / (it + 1):.4f}, {totalR2s / (it + 1)}\n")
-
 
         return predicts, targets
 
