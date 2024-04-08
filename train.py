@@ -24,33 +24,33 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(name)s - %(message)s
                     level=logging.INFO)
 
 # data
-modelType = "Transormer"
+modelType = "Transformer"
 dataFile = "indy_20160627_01.mat"
 dataPath = "../data/Makin/"
 npy_folder_path = "../data/Makin_processed_npy"
 ori_npy_folder_path = "../data/Makin_origin_npy"
 excel_path = 'results/'
 dataFileCoding = "utf-8"
-# use 0 for char-level english and 1 for chinese. Only affects some Transormer hyperparameters
+# use 0 for char-level english and 1 for chinese. Only affects some Transformer hyperparameters
 dataFileType = 0
 
 # hyperparameter
 epochSaveFrequency = 10    # every ten epoch
 epochSavePath = "pth/trained-"
 batchSize = 32
-nEpoch = 50
+nEpoch = 80
 modelLevel = "word"     # "character" or "word"
 seq_size = 128    # the length of the sequence
 out_size = 2   # the output dim
 embed_size = 256
 
 # learning rate
-lrInit = 6e-4 if modelType == "Transormer" else 4e3   # Transormer can use higher learning rate
+lrInit = 6e-4 if modelType == "Transformer" else 4e3   # Transformer can use higher learning rate
 lrFinal = 4e-4
 
 betas = (0.9, 0.99)
 eps = 4e-9
-weightDecay = 0 if modelType == "Transormer" else 0.01
+weightDecay = 0 if modelType == "Transformer" else 0.01
 epochLengthFixed = 10000    # make every epoch very short, so we can see the training progress
 dimensions = ['test_r2', 'test_loss', 'train_r2', 'train_loss']
 
@@ -111,8 +111,22 @@ results = []
 for spike_file, target_file in zip(spike_files, target_files):
     # 提取前缀名以确保对应文件正确
     prefix = spike_file.split('_spike')[0]
-    # if prefix != 'indy_20160627_01':
-    #     continue
+    prefixes = [
+                'indy_20160927_04',
+                # 'indy_20160921_01',
+                # 'indy_20161220_02',
+                # 'indy_20161024_03',
+                # 'indy_20161026_03',
+                # 'indy_20160927_06',
+                # 'indy_20161005_06',
+                # 'indy_20160930_02',
+                # 'indy_20160624_03',
+                # 'indy_20161025_04',
+                # 'indy_20161207_02',
+                # 'indy_20161014_04'
+                ]
+    if prefix not in prefixes:
+        continue
 
     assert prefix in target_file, f"Mismatched prefix: {prefix} vs {target_file}"
 
@@ -152,6 +166,8 @@ for spike_file, target_file in zip(spike_files, target_files):
 
     # setting the model parameters
     model = Transformer(src_feature_dim, trg_feature_dim, src_pad_idx, trg_pad_idx, max_length)
+    total_params = sum(p.numel() for p in model.parameters())
+    print(f'Total parameters: {total_params}')
 
     criterion = nn.MSELoss()
 
@@ -166,9 +182,9 @@ for spike_file, target_file in zip(spike_files, target_files):
     trainer = Trainer(model, train_dataset, test_dataset, tConf)
     trainer.train()
     result = trainer.test()
-    result['file_name'] = prefix
-    results.append(result)
+    # result['file_name'] = prefix
+    # results.append(result)
     # torch.save(model, epochSavePath + trainer.get_runName() + '-' + datetime.datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
-    #            + '.pth')
+               # + '.pth')
     print(prefix + 'done')
-save_to_excel(results, excel_path + os.path.basename(ori_npy_folder_path) + '-' + modelType + '-'  + str(nEpoch) + '-' + 'results.xlsx', modelType, nEpoch, dimensions)
+# save_to_excel(results, excel_path + os.path.basename(ori_npy_folder_path) + '-' + modelType + '-'  + str(nEpoch) + '-' + 'partialResults.xlsx', modelType, nEpoch, dimensions)
