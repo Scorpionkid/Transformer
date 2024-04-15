@@ -5,6 +5,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from torch.nn import functional as F
 from torcheval.metrics.functional import r2_score
 
+
 class SelfAttention(nn.Module):
     def __init__(self, embed_size, heads):
         super(SelfAttention, self).__init__()
@@ -81,6 +82,7 @@ class TransformerBlock(nn.Module):
         out = self.dropout(self.norm2(forward + x))
         return out
 
+
 class Encoder(nn.Module):
     def __init__(
         self,
@@ -129,6 +131,7 @@ class Encoder(nn.Module):
 
         return out
 
+
 class DecoderBlock(nn.Module):
     def __init__(self, embed_size, heads, forward_expansion, dropout, device):
         super(DecoderBlock, self).__init__()
@@ -142,6 +145,7 @@ class DecoderBlock(nn.Module):
         query = self.dropout(self.norm(attention + x))
         out = self.transformer_block(value, key, query, src_mask)
         return out
+
 
 class Decoder(nn.Module):
     def __init__(
@@ -181,6 +185,7 @@ class Decoder(nn.Module):
         out = self.fc_out(x)
         return out
 
+
 class Transformer(nn.Module):
     def __init__(
         self,
@@ -190,9 +195,9 @@ class Transformer(nn.Module):
         trg_pad_idx,
         max_length,
         embed_size=256,
-        num_layers=6,
-        forward_expansion=4,
-        heads=8,
+        num_layers=2,
+        forward_expansion=2,
+        heads=2,
         dropout=0,
         device="cuda",
     ):
@@ -279,6 +284,7 @@ class Transformer(nn.Module):
         padded_batch = torch.cat([batch, pad_tensor], dim=1)
 
         return padded_batch
+
 
 if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

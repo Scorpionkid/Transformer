@@ -23,20 +23,20 @@ logging.basicConfig(format="%(asctime)s - %(levelname)s - %(name)s - %(message)s
 modelType = "Transormer"
 dataFile = "Makin"
 dataPath = "../Makin/Makin_processed_npy/"
-excel_path = 'results/'
+csv_file = 'result/train_finetune1-25.csv'
 dataFileCoding = "utf-8"
 # use 0 for char-level english and 1 for chinese. Only affects some Transormer hyperparameters
 dataFileType = 0
 
 # hyperparameter
 epochSaveFrequency = 10    # every ten epoch
-epochSavePath = "pth/trained-"
-batchSize = 128
+epochSavePath = "pth-trained-"
+batchSize = 32
 nEpoch = 50
 modelLevel = "word"     # "character" or "word"
-seq_size = 256    # the length of the sequence
+seq_size = 1024    # the length of the sequence
 out_size = 2   # the output dim
-embed_size = 256
+embed_size = 64
 input_size = 96
 
 # learning rate
@@ -51,14 +51,13 @@ epochLengthFixed = 10000    # make every epoch very short, so we can see the tra
 
 # loading data
 print('loading data... ' + dataFile)
-with open("train.csv", "a", encoding="utf-8") as file:
+with open(csv_file, "a", encoding="utf-8") as file:
     file.write(dataPath + "\n")
     file.write("batch size " + str(batchSize) + "epoch  " + str(nEpoch) + "sequence len  " + str(seq_size) + "\n")
 
 
 class Dataset(Dataset):
     def __init__(self, spike, target, seq_size, out_size, train_mode=True):
-        print("loading data...", end=' ')
         self.seq_size = seq_size
         self.out_size = out_size
         self.x, self.y = spike, target
@@ -87,10 +86,9 @@ class Dataset(Dataset):
         return x, y
 
 
-spike_train, spike_test, targte_train, target_test = AllDays_split(dataPath)
+train_spike, train_target = loadAllDays(dataPath)
 
-train_dataset = Dataset(spike_train, targte_train, seq_size, out_size)
-test_dataset = Dataset(spike_test, target_test, seq_size, out_size)
+train_dataset = Dataset(train_spike, train_target, seq_size, out_size)
 
 src_pad_idx = -1
 trg_pad_idx = -1
@@ -99,7 +97,6 @@ trg_feature_dim = train_dataset.x.shape[-1]
 max_length = seq_size
 
 train_dataloader = DataLoader(train_dataset, shuffle=True, pin_memory=True, num_workers=numWorkers, batch_size=batchSize)
-test_dataloader = DataLoader(test_dataset, shuffle=False, pin_memory=True, num_workers=numWorkers, batch_size=batchSize)
 
 model = Transformer(src_feature_dim, trg_feature_dim, src_pad_idx, trg_pad_idx, max_length)
 
@@ -108,16 +105,20 @@ print("number of parameters: " + str(sum(p.numel() for p in model.parameters()))
 criterion = nn.MSELoss()
 
 print('model', modelType, 'epoch', nEpoch, 'batchsz', batchSize, 'betas', betas, 'eps', eps, 'wd', weightDecay,
-        'seq_size', seq_size)
+      'seq_size', seq_size)
 
 tConf = TrainerConfig(modelType=modelType, maxEpochs=nEpoch, batchSize=batchSize, weightDecay=weightDecay,
-                        learningRate=lrInit, lrDecay=True, lrFinal=lrFinal, betas=betas, eps=eps,
-                        warmupTokens=0, finalTokens=nEpoch*len(train_dataset)*seq_size, numWorkers=0,
-                        epochSaveFrequency=epochSaveFrequency, epochSavePath=epochSavePath,
-                        out_dim=out_size, ctxLen=seq_size, embed_size=embed_size, criterion=criterion)
-trainer = Trainer(model, train_dataloader, test_dataloader, tConf)
-trainer.train()
-trainer.test()
+                      learningRate=lrInit, lrDecay=True, lrFinal=lrFinal, betas=betas, eps=eps,
+                      warmupTokens=0, finalTokens=nEpoch*len(train_dataset)*seq_size, numWorkers=0,
+                      epochSaveFrequency=epochSaveFrequency, epochSavePath=epochSavePath,
+                      out_dim=out_size, ctxLen=seq_size, embed_size=embed_size, criterion=criterion, csv_file=csv_file)
 
-# torch.save(model, epochSavePath + trainer.get_runName() + '-' + datetime.datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
-#            + '.pth')
+trainer = Trainer(model, None, None, tConf)
+
+with open(csv_file, 'a', encoding='utf-8') as file:
+    file.write(f'train loss, train r2 score\n')
+
+trainer.train(train_dataloader)
+
+torch.save(model, epochSavePath + trainer.get_runName() + '-' +
+           datetime.datetime.today().strftime('%Y-%m-%d-%H-%M-%S') + '.pth')
