@@ -1,3 +1,5 @@
+import itertools
+
 import h5py
 import openpyxl
 import torch
@@ -8,6 +10,8 @@ import pandas as pd
 from torch.nn import functional as F
 from scipy.interpolate import interp1d
 from pynwb import NWBHDF5IO
+
+from Transformer.src.model import Transformer
 
 
 def top_k_logits(logits, k):
@@ -148,6 +152,7 @@ def load_mat(mat_file_path):
 
     return x, np.transpose(y), time
 
+
 def spike_to_counts_nwb(spike_times, spike_times_index, y):
     start_time = spike_times.min()
     end_time = spike_times.max()
@@ -178,7 +183,6 @@ def spike_to_counts_nwb(spike_times, spike_times_index, y):
         target_matrix[i] = velocity
 
     return spike_matrix, target_matrix
-
 
 
 def loadNwbFile(nwb_file_path):
@@ -218,7 +222,8 @@ def loadNwbFile(nwb_file_path):
             if name == "spike_times" or name == "spike_times_index":
                 spike_dict[name] = column_data[:]
         spike_dict["spike_times_index"] = units.spike_times_index[:]
-        spike, velocity = spike_to_counts_nwb(spike_dict["spike_times"], spike_dict["spike_times_index"], processing_dict["cursor_pos"])
+        spike, velocity = spike_to_counts_nwb(spike_dict["spike_times"], spike_dict["spike_times_index"],
+                                              processing_dict["cursor_pos"])
     print(processing_dict)
     # return spikes, cursor_pos
 
@@ -274,7 +279,6 @@ def resample_data(data, original_interval, new_interval):
 
 
 def spike_to_counts1(spike, y, t):
-
     start_time = t[0]  # 获取t的起始时间
     end_time = t[-1]  # 获取t的结束时间
 
@@ -305,6 +309,7 @@ def spike_to_counts1(spike, y, t):
 
     return spike_matrix, target_matrix
 
+
 def gaussian_nomalization(x, y):
     x = (x - x.mean()) / x.std()
     y = (y - y.mean()) / y.std()
@@ -317,6 +322,7 @@ def min_max_nomalization(x, y):
     y = (y - y.min()) / (y.max() - y.min())
 
     return x, y
+
 
 def pad_sequences(batch, src_pad_idx, max_length):
     """
@@ -344,9 +350,11 @@ def pad_sequences(batch, src_pad_idx, max_length):
 
     return padded_batch
 
+
 def load_npy(file_path):
     data = np.load(file_path, allow_pickle=True)
     return data
+
 
 def save_to_excel(results, excel_path, model_name, epoch, dimensions):
     # 创建一个包含所需列的新行DataFrame
@@ -381,8 +389,112 @@ def save_to_excel(results, excel_path, model_name, epoch, dimensions):
     #     df_new_row.to_excel(writer, sheet_name='Sheet1', index=False)
     #     writer.close()
 
+def loadAllDays(data_path):
+    folderPath = data_path
+    name = ['spike/', 'target/']
+    section_name = []
+    spike = []
+    target = []
 
+    # load spike data
+    for filename in os.listdir(os.path.join(folderPath, name[0])):
+        file_path = os.path.join(folderPath, name[0], filename)
+        base_name = os.path.splitext(filename)[0]
+        section_name.append(base_name)
+        temp = np.load(file_path)
+        spike.append(temp)
 
+    # load target data
+    for filename in os.listdir(os.path.join(folderPath, name[1])):
+        file_path = os.path.join(folderPath, name[1], filename)
+        temp = np.load(file_path)
+        target.append(temp)
 
+    s = spike[25:30]
+    t = target[25:30]
+    section_name = section_name[25:30]
+
+    # s = spike[0:25]
+    # t = target[0:25]
+    # section_name = section_name[0:25]
+
+    return s, t, section_name
+
+# 每天的数据划分训练集和测试集
+def AllDays_split(data_path):
+    folderPath = data_path
+    name = ['spike/', 'target/']
+    section_name = []
+    spike_train = []
+    spike_test = []
+    target_train = []
+    target_test = []
+
+    # load spike data
+    for filename in os.listdir(os.path.join(folderPath, name[0])):
+        base_name = os.path.splitext(filename)[0]
+        section_name.append(base_name)
+        file_path = os.path.join(folderPath, name[0], filename)
+        temp = np.load(file_path)
+        spike_train.append(temp[:int(len(temp) * 0.8), :])
+        spike_test.append(temp[int(len(temp) * 0.8):, :])
+
+    # load target data
+    for filename in os.listdir(os.path.join(folderPath, name[1])):
+        file_path = os.path.join(folderPath, name[1], filename)
+        temp = np.load(file_path)
+        target_train.append(temp[:int(len(temp) * 0.8), :])
+        target_test.append(temp[int(len(temp) * 0.8):, :])
+
+    # s_train = np.concatenate(spike_train, axis=0)
+    # s_test = np.concatenate(spike_test, axis=0)
+    # t_train = np.concatenate(target_train, axis=0)
+    # t_test = np.concatenate(target_test, axis=0)
+
+    # s = np.concatenate((s_train, s_test), axis=0)
+    # t = np.concatenate((t_train, t_test), axis=0)
+
+    return spike_train, spike_test, target_train, target_test, section_name
+
+def parameter_search(embed_sizes, num_layers_list, forward_expansions, heads_list, src_feature_dim, trg_feature_dim,
+                     src_pad_idx, trg_pad_idx, max_length,
+                     train_dataset, test_dataset, tConf,
+                     excel_path, modelType, nEpoch, prefix):
+    results = []
+    ct = 0
+    for embed_size, num_layers, forward_expansion, heads in itertools.product(embed_sizes, num_layers_list,
+                                                                              forward_expansions, heads_list):
+        ct += 1
+        if ct == 2:
+            break
+        model = Transformer(
+            src_feature_dim, trg_feature_dim, src_pad_idx, trg_pad_idx, max_length,
+            embed_size=embed_size, num_layers=num_layers, forward_expansion=forward_expansion, heads=heads,
+        )
+        total_params = sum(p.numel() for p in model.parameters())
+
+        # 检查参数量是否符合目标
+        if 180000 <= total_params <= 220000:
+            from Transformer.src.trainer import Trainer
+            trainer = Trainer(model, train_dataset, test_dataset, tConf)
+            trainer.train()
+            result = trainer.test()
+            result.update({
+                "file_name": prefix,
+                "embed_size": embed_size,
+                "num_layers": num_layers,
+                "forward_expansion": forward_expansion,
+                "heads": heads,
+                "total_params": total_params,
+            })
+            results.append(result)
+
+    # 选取性能最优的配置
+    best_config = max(results, key=lambda x: x["test_r2"])  # 假设最后一个元素是性能评分
+    print("最优配置：", best_config)
+
+    columns = ['embed_size', 'num_layers', 'forward_expansion', 'heads', 'total_params']
+    save_to_excel(results, excel_path + '-' + modelType + '-' + str(nEpoch) +
+                  '-' + 'PsResults.xlsx', modelType, nEpoch, columns)
 
 

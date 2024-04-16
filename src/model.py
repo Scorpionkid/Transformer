@@ -189,10 +189,10 @@ class Transformer(nn.Module):
         src_pad_idx,
         trg_pad_idx,
         max_length,
-        embed_size=256,
-        num_layers=6,
-        forward_expansion=4,
-        heads=8,
+        embed_size,
+        num_layers,
+        forward_expansion,
+        heads,
         dropout=0,
         device="cuda",
     ):
@@ -246,7 +246,7 @@ class Transformer(nn.Module):
             num_warmup_steps = config.warmup_steps
             num_training_steps = config.total_steps
             warmup = min(current_step / num_warmup_steps, 1.0)
-            decay = (num_training_steps - current_step) / max(1, num_training_steps - num_warmup_steps)
+            decay = ((num_training_steps - current_step) / max(1, num_training_steps - num_warmup_steps))**2
             return warmup * decay
 
         # 学习率调度器

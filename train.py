@@ -6,7 +6,7 @@ import numpy as np
 from scipy.ndimage import gaussian_filter1d
 
 from src.utils import set_seed, resample_data, spike_to_counts2, load_npy, save_to_excel
-from src.utils import load_mat, spike_to_counts1, save_data2txt, gaussian_nomalization, pad_sequences
+from src.utils import load_mat, spike_to_counts1, save_data2txt, gaussian_nomalization, pad_sequences, parameter_search
 from src.model import Transformer
 from src.trainer import Trainer, TrainerConfig
 from torch.utils.data import Dataset, random_split, Subset
@@ -14,9 +14,6 @@ import os
 
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 os.environ['NUMEXPR_MAX_THREADS'] = '16'
-
-
-
 
 set_seed(42)
 np.set_printoptions(precision=4, suppress=True, linewidth=200)
@@ -35,23 +32,32 @@ dataFileCoding = "utf-8"
 dataFileType = 0
 
 # hyperparameter
-epochSaveFrequency = 10    # every ten epoch
+epochSaveFrequency = 10  # every ten epoch
 epochSavePath = "pth/trained-"
 batchSize = 32
-nEpoch = 80
-modelLevel = "word"     # "character" or "word"
-seq_size = 128    # the length of the sequence
-out_size = 2   # the output dim
-embed_size = 256
+nEpoch = 50
+modelLevel = "word"  # "character" or "word"
+seq_size = 128  # the length of the sequence
+out_size = 2  # the output dim
+embed_size = 64
+num_layers = 3
+forward_expansion = 2
+heads = 2
+
+# 参数范围
+embed_sizes = [32, 64, 128]
+num_layers_list = [1, 2, 3, 4]
+forward_expansions = [1, 2, 3, 4]
+heads_list = [1, 2, 4, 8]
 
 # learning rate
-lrInit = 6e-4 if modelType == "Transformer" else 4e3   # Transformer can use higher learning rate
+lrInit = 6e-4 if modelType == "Transformer" else 4e3  # Transformer can use higher learning rate
 lrFinal = 4e-4
 
 betas = (0.9, 0.99)
 eps = 4e-9
 weightDecay = 0 if modelType == "Transformer" else 0.01
-epochLengthFixed = 10000    # make every epoch very short, so we can see the training progress
+epochLengthFixed = 10000  # make every epoch very short, so we can see the training progress
 dimensions = ['test_r2', 'test_loss', 'train_r2', 'train_loss']
 
 # loading data
@@ -89,6 +95,7 @@ class Dataset(Dataset):
             y = torch.tensor(self.y[start_idx:end_idx, :], dtype=torch.float32)
         return x, y
 
+
 # spike, y, t = load_mat(dataPath+dataFile)
 # y = resample_data(y, 4, 1)
 # new_time = np.linspace(t[0, 0], t[0, -1], len(y))
@@ -112,19 +119,34 @@ for spike_file, target_file in zip(spike_files, target_files):
     # 提取前缀名以确保对应文件正确
     prefix = spike_file.split('_spike')[0]
     prefixes = [
-                'indy_20160927_04',
-                # 'indy_20160921_01',
-                # 'indy_20161220_02',
-                # 'indy_20161024_03',
-                # 'indy_20161026_03',
-                # 'indy_20160927_06',
-                # 'indy_20161005_06',
-                # 'indy_20160930_02',
-                # 'indy_20160624_03',
-                # 'indy_20161025_04',
-                # 'indy_20161207_02',
-                # 'indy_20161014_04'
-                ]
+        'indy_20161005_06',
+        'indy_20160921_01',
+        'indy_20160927_06',
+        'indy_20160927_04',
+        'indy_20161024_03',
+        'indy_20160915_01',
+        'indy_20160930_05',
+        'indy_20161220_02',
+        'indy_20161207_02',
+        'indy_20161025_04',
+        'indy_20161007_02',
+        'indy_20160916_01',
+        'indy_20160930_02',
+        'indy_20161017_02',
+        'indy_20161026_03',
+        'indy_20161013_03',
+        'indy_20161006_02',
+        'indy_20161212_02',
+        'indy_20161014_04',
+        'indy_20161027_03',
+        'indy_20170123_02',
+        'indy_20160624_03',
+        'indy_20161011_03',
+        'indy_20161206_02',
+        'indy_20170124_01',
+        'indy_20170131_02',
+        'indy_20170127_03'
+    ]
     if prefix not in prefixes:
         continue
 
@@ -145,27 +167,15 @@ for spike_file, target_file in zip(spike_files, target_files):
     train_dataset = Dataset(seq_size, out_size, spike_train, target_train, train_mode=True)
     test_dataset = Dataset(seq_size, out_size, spike_test, target_test, train_mode=False)
 
-    # 归一化
-    # train_dataset.x, train_dataset.y = gaussian_nomalization(train_dataset.x, train_dataset.y)
-    # test_dataset.x, test_dataset.y = gaussian_nomalization(test_dataset.x, test_dataset.y)
-    # 平滑处理
-    # train_dataset.x = gaussian_filter1d(train_dataset.x, 3, axis=0)
-    # test_dataset.x = gaussian_filter1d(test_dataset.x, 3, axis=0)
-    # train_dataset.y = gaussian_filter1d(train_dataset.y, 3, axis=0)
-    # test_dataset.y = gaussian_filter1d(test_dataset.y, 3, axis=0)
-
     src_pad_idx = -1
     trg_pad_idx = -1
     src_feature_dim = train_dataset.x.shape[1]
     trg_feature_dim = train_dataset.x.shape[1]
     max_length = seq_size
 
-    # 按时间连续性划分数据集
-    # train_Dataset = Subset(dataset, range(0, int(0.8 * len(dataset))))
-    # test_Dataset = Subset(dataset, range(int(0.8 * len(dataset)), len(dataset)))
-
     # setting the model parameters
-    model = Transformer(src_feature_dim, trg_feature_dim, src_pad_idx, trg_pad_idx, max_length)
+    model = Transformer(src_feature_dim, trg_feature_dim, src_pad_idx, trg_pad_idx, max_length, embed_size, num_layers,
+                        forward_expansion, heads)
     total_params = sum(p.numel() for p in model.parameters())
     print(f'Total parameters: {total_params}')
 
@@ -176,15 +186,23 @@ for spike_file, target_file in zip(spike_files, target_files):
 
     tConf = TrainerConfig(modelType=modelType, maxEpochs=nEpoch, batchSize=batchSize, weightDecay=weightDecay,
                           learningRate=lrInit, lrDecay=True, lrFinal=lrFinal, betas=betas, eps=eps,
-                          warmupTokens=0, finalTokens=nEpoch*len(train_dataset)*seq_size, numWorkers=0,
+                          warmupTokens=0, finalTokens=nEpoch * len(train_dataset) * seq_size, numWorkers=0,
                           epochSaveFrequency=epochSaveFrequency, epochSavePath=epochSavePath,
                           out_dim=out_size, ctxLen=seq_size, embed_size=embed_size, criterion=criterion)
     trainer = Trainer(model, train_dataset, test_dataset, tConf)
     trainer.train()
     result = trainer.test()
-    # result['file_name'] = prefix
-    # results.append(result)
-    # torch.save(model, epochSavePath + trainer.get_runName() + '-' + datetime.datetime.today().strftime('%Y-%m-%d-%H-%M-%S')
-               # + '.pth')
+
+    # 参数搜索，备用
+    # parameter_search(embed_sizes, num_layers_list, forward_expansions, heads_list, src_feature_dim, trg_feature_dim,
+    #                  src_pad_idx, trg_pad_idx, max_length,
+    #                  train_dataset, test_dataset, tConf,
+    #                  excel_path, modelType, nEpoch, prefix)
+
+    result['file_name'] = prefix
+    results.append(result)
+    # torch.save(model, epochSavePath + trainer.get_runName() +
+    # '-' + datetime.datetime.today().strftime('%Y-%m-%d-%H-%M-%S') + '.pth')
     print(prefix + 'done')
-# save_to_excel(results, excel_path + os.path.basename(ori_npy_folder_path) + '-' + modelType + '-'  + str(nEpoch) + '-' + 'partialResults.xlsx', modelType, nEpoch, dimensions)
+save_to_excel(results, excel_path + os.path.basename(ori_npy_folder_path) + '-' + modelType + '-' + str(nEpoch) +
+              '-' + 'partialResults.xlsx', modelType, nEpoch, dimensions)

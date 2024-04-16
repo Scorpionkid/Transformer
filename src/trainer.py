@@ -29,7 +29,6 @@ class TrainerConfig:
     warmup_steps = 4000
     total_steps = 10000
 
-
     def __init__(self, **kwargs):
         for k, v in kwargs.items():
             setattr(self, k, v)
@@ -48,7 +47,7 @@ class Trainer:
         self.t = False
         self.config = config
         self.avg_test_loss = 0
-        self.tokens = 0     # counter used for learning rate decay
+        self.tokens = 0  # counter used for learning rate decay
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print("当前设备:", self.device)
         current_gpu_name = torch.cuda.get_device_name(torch.cuda.current_device())
@@ -101,51 +100,46 @@ class Trainer:
                         optimizer.step()
                         scheduler.step()
 
-                        # if config.lrDecay:
-                        #     self.tokens += (y >= 0).sum()
-                        #     lrFinalFactor = config.lrFinal / config.learningRate
-                        #     if self.tokens < config.warmupTokens:
-                        #         # linear warmup
-                        #         lrMult = lrFinalFactor + (1 - lrFinalFactor) * float(self.tokens) / float(
-                        #             config.warmupTokens)
-                        #         progress = 0
-                        #     else:
-                        #         # cosine learning rate decay
-                        #         progress = float(self.tokens - config.warmupTokens) / float(
-                        #             max(1, config.finalTokens - config.warmupTokens))
-                        #         # progress = min(progress * 1.1, 1.0) # more fine-tuning with low LR
-                        #         lrMult = (0.5 + lrFinalFactor / 2) + (0.5 - lrFinalFactor / 2) * math.cos(
-                        #             math.pi * progress)
-                        #
-                        #     lr = config.learningRate * lrMult
-                        #     for paramGroup in optimizer.param_groups:
-                        #         paramGroup['lr'] = lr
-                        # else:
-                        #     lr = config.learningRate
+                        if config.lrDecay:
+                            self.tokens += (y >= 0).sum()
+                            lrFinalFactor = config.lrFinal / config.learningRate
+                            if self.tokens < config.warmupTokens:
+                                # linear warmup
+                                lrMult = lrFinalFactor + (1 - lrFinalFactor) * float(self.tokens) / float(
+                                    config.warmupTokens)
+                                progress = 0
+                            else:
+                                # cosine learning rate decay
+                                progress = float(self.tokens - config.warmupTokens) / float(
+                                    max(1, config.finalTokens - config.warmupTokens))
+                                # progress = min(progress * 1.1, 1.0) # more fine-tuning with low LR
+                                lrMult = (0.5 + lrFinalFactor / 2) + (0.5 - lrFinalFactor / 2) * math.cos(
+                                    math.pi * progress)
+
+                            lr = config.learningRate * lrMult
+                            for paramGroup in optimizer.param_groups:
+                                paramGroup['lr'] = lr
+                        else:
+                            lr = config.learningRate
                         pbar.set_description(
                             f"epoch {epoch + 1} "
                             # f"progress {progress * 100.0:.2f}%"
                             f"iter {it + 1}: r2_score "
-                            f"{totalR2s / (it + 1):.2f} loss {totalLoss / (it + 1):.4f}" 
+                            f"{totalR2s / (it + 1):.2f} loss {totalLoss / (it + 1):.4f}"
                             f"lr {optimizer.param_groups[0]['lr']:e}")
             # 画图就用每个epoch的数据
-            self.Loss_train.append(totalLoss / (it + 1))
-            self.r2_train.append(totalR2s / (it + 1))
+            # self.Loss_train.append(totalLoss / (it + 1))
+            # self.r2_train.append(totalR2s / (it + 1))
 
-            # if epoch == self.config.maxEpochs - 1:
-                # 如果不画图就用最后一个epoch的数据存进excel中
-                # self.Loss_train.append(totalLoss / (it + 1))
-                # self.r2_train.append(totalR2s / (it + 1))
-                # print(f"Train Loss: {totalLoss / (it + 1):.4f}, R2_score: {totalR2s / (it + 1):.4f},  Epoch: {self.config.maxEpochs}")
-
+            if epoch == self.config.maxEpochs - 1:
+            # 如果不画图就用最后一个epoch的数据存进excel中
+                self.Loss_train.append(totalLoss / (it + 1))
+                self.r2_train.append(totalR2s / (it + 1))
+                print(f"Train Loss: {totalLoss / (it + 1):.4f}, R2_score: {totalR2s / (it + 1):.4f},  Epoch: {self.config.maxEpochs}")
 
     def test(self):
         model, config = self.model, self.config
         model.eval()
-        predicts = []
-        targets = []
-        self.t = False
-        model.train(self.t)
         data = self.test_dataset
         totalLoss = 0
         totalR2s = 0
@@ -158,11 +152,9 @@ class Trainer:
         for it, (x, y) in pbar:
             x = x.to(self.device)  # place data on the correct device
 
-            with torch.set_grad_enabled(self.t):
+            with torch.no_grad():
                 out = model(x)  # forward the model
                 out = out.cpu().detach()
-                predicts.append(out.view(-1, 2))
-                targets.append(y.view(-1, 2))
                 loss = self.config.criterion(out.view(-1, 2), y.view(-1, 2))
                 # loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
                 r2_s = r2_score(out.view(-1, 2), y.view(-1, 2))
@@ -175,17 +167,17 @@ class Trainer:
         MeanLoss = totalLoss / it
         MeanR2 = totalR2s / it
         print(f"R2_score: {MeanR2:.4f}, Test Mean Loss: {MeanLoss:.4f},  Num_iter: {it} ")
+        # with open(config.csv_file, "a", encoding='utf-8') as file:
+        #     file.write(f"{section_name}, {MeanLoss:.4f}, "
+        #                f"{self.config.modelType},"
+        #                f"{MeanR2:.4f}, \n")
 
-        # save_data2txt(predicts, 'src_trg_data/test_predict.txt')
-        # save_data2txt(targets, 'src_trg_data/test_target.txt')
-
-
-        # 求self.Loss_train的平均值
         self.results['test_loss'] = MeanLoss
         self.results['test_r2'] = MeanR2
-        self.results['train_loss'] = self.Loss_train
-        self.results['train_r2'] = self.r2_train
-        # return self.results
+        self.results['train_loss'] = self.Loss_train[-1]
+        self.results['train_r2'] = self.r2_train[-1]
+
+        return self.results
 
         n = 10000
         tar = torch.cat(targets, dim=0).cpu().detach().numpy()
@@ -197,26 +189,26 @@ class Trainer:
 
         fig, axs = plt.subplots(2, 2, figsize=(15, 15))
 
-        axs[0,0].plot(range(0, self.config.maxEpochs), self.Loss_train)
-        axs[0,0].set_title("loss_train")
-        axs[0,1].plot(range(0, self.config.maxEpochs), self.r2_train)
-        axs[0,1].set_title("r2_train")
+        axs[0, 0].plot(range(0, self.config.maxEpochs), self.Loss_train)
+        axs[0, 0].set_title("loss_train")
+        axs[0, 1].plot(range(0, self.config.maxEpochs), self.r2_train)
+        axs[0, 1].set_title("r2_train")
 
         # axs[1,0].plot(range(0, it), self.Loss_test)
 
         # axs[1,1].plot(range(0, it), self.r2_test)
 
+        axs[1, 0].plot(range(0, len(tar_x_v)), tar_x_v, label='tar_x_v')
+        axs[1, 0].plot(range(0, len(pre_x_v)), pre_x_v, label='pre_x_v')
+        axs[1, 0].set_title(f"Loss_test\nTest loss: {MeanLoss:.4f}")
+        axs[1, 0].legend()  # 调用特定轴的legend方法
 
-        axs[1,0].plot(range(0, len(tar_x_v)), tar_x_v, label='tar_x_v')
-        axs[1,0].plot(range(0, len(pre_x_v)), pre_x_v, label='pre_x_v')
-        axs[1,0].set_title(f"Loss_test\nTest loss: {MeanLoss:.4f}")
-        axs[1,0].legend()  # 调用特定轴的legend方法
-
-        axs[1,1].plot(range(0, len(tar_y_v)), tar_y_v, label='tar_y_v')
-        axs[1,1].plot(range(0, len(pre_y_v)), pre_y_v, label='pre_y_v')
-        axs[1,1].set_title(f"r2_test\nTest r2s: {MeanR2:.4f}")
-        axs[1,1].legend()  # 调用特定轴的legend方法
+        axs[1, 1].plot(range(0, len(tar_y_v)), tar_y_v, label='tar_y_v')
+        axs[1, 1].plot(range(0, len(pre_y_v)), pre_y_v, label='pre_y_v')
+        axs[1, 1].set_title(f"r2_test\nTest r2s: {MeanR2:.4f}")
+        axs[1, 1].legend()  # 调用特定轴的legend方法
 
         # 自动调整子图间距
         plt.tight_layout()
         plt.show()
+
