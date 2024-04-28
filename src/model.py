@@ -6,7 +6,7 @@ from torch.nn import functional as F
 from torcheval.metrics.functional import r2_score
 
 class SelfAttention(nn.Module):
-    def __init__(self, embed_size, heads):
+    def __init__(self, embed_size, heads, device):
         super(SelfAttention, self).__init__()
         self.embed_size = embed_size
         self.heads = heads
@@ -16,10 +16,10 @@ class SelfAttention(nn.Module):
             self.head_dim * heads == embed_size
         ), "Embedding size needs to be divisible by heads"
 
-        self.values = nn.Linear(self.head_dim, self.head_dim, bias=False)
-        self.keys = nn.Linear(self.head_dim, self.head_dim, bias=False)
-        self.queries = nn.Linear(self.head_dim, self.head_dim, bias=False)
-        self.fc_out = nn.Linear(heads * self.head_dim, embed_size)
+        self.values = nn.Linear(self.head_dim, self.head_dim, bias=False).to(device)
+        self.keys = nn.Linear(self.head_dim, self.head_dim, bias=False).to(device)
+        self.queries = nn.Linear(self.head_dim, self.head_dim, bias=False).to(device)
+        self.fc_out = nn.Linear(heads * self.head_dim, embed_size).to(device)
 
     def forward(self, values, keys, query, mask):
         # Get number of training examples
@@ -58,16 +58,16 @@ class SelfAttention(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, embed_size, heads, dropout, forward_expansion):
+    def __init__(self, embed_size, heads, dropout, forward_expansion, device):
         super(TransformerBlock, self).__init__()
-        self.attention = SelfAttention(embed_size, heads)
-        self.norm1 = nn.LayerNorm(embed_size)
-        self.norm2 = nn.LayerNorm(embed_size)
+        self.attention = SelfAttention(embed_size, heads, device)
+        self.norm1 = nn.LayerNorm(embed_size).to(device)
+        self.norm2 = nn.LayerNorm(embed_size).to(device)
 
         self.feed_forward = nn.Sequential(
-            nn.Linear(embed_size, forward_expansion * embed_size),
+            nn.Linear(embed_size, forward_expansion * embed_size).to(device),
             nn.ReLU(),
-            nn.Linear(forward_expansion * embed_size, embed_size),
+            nn.Linear(forward_expansion * embed_size, embed_size).to(device),
         )
 
         self.dropout = nn.Dropout(dropout)
@@ -97,8 +97,8 @@ class Encoder(nn.Module):
         self.embed_size = embed_size
         self.device = device
         # self.word_embedding = nn.Embedding(src_vocab_size, embed_size)
-        self.src_feature_linear = nn.Linear(src_feature_dim, embed_size)
-        self.position_embedding = nn.Embedding(max_length, embed_size)
+        self.src_feature_linear = nn.Linear(src_feature_dim, embed_size).to(device)
+        self.position_embedding = nn.Embedding(max_length, embed_size).to(device)
 
         self.layers = nn.ModuleList(
             [
@@ -107,6 +107,7 @@ class Encoder(nn.Module):
                     heads,
                     dropout=dropout,
                     forward_expansion=forward_expansion,
+                    device=device,
                 )
                 for _ in range(num_layers)
             ]
@@ -132,9 +133,9 @@ class Encoder(nn.Module):
 class DecoderBlock(nn.Module):
     def __init__(self, embed_size, heads, forward_expansion, dropout, device):
         super(DecoderBlock, self).__init__()
-        self.attention = SelfAttention(embed_size, heads)
-        self.norm = nn.LayerNorm(embed_size)
-        self.transformer_block = TransformerBlock(embed_size, heads, dropout, forward_expansion)
+        self.attention = SelfAttention(embed_size, heads, device)
+        self.norm = nn.LayerNorm(embed_size).to(device)
+        self.transformer_block = TransformerBlock(embed_size, heads, dropout, forward_expansion, device)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, value, key, src_mask, trg_mask):
@@ -158,8 +159,8 @@ class Decoder(nn.Module):
         super(Decoder, self).__init__()
         self.device = device
         # self.word_embedding = nn.Embedding(trg_vocab_size, embed_size)
-        self.trg_feature_linear = nn.Linear(trg_feature_dim, embed_size)
-        self.position_embedding = nn.Embedding(max_length, embed_size)
+        self.trg_feature_linear = nn.Linear(trg_feature_dim, embed_size).to(device)
+        self.position_embedding = nn.Embedding(max_length, embed_size).to(device)
 
         self.layers = nn.ModuleList(
             [
@@ -167,7 +168,7 @@ class Decoder(nn.Module):
                 for _ in range(num_layers)
             ]
         )
-        self.fc_out = nn.Linear(embed_size, 2)
+        self.fc_out = nn.Linear(embed_size, 2).to(device)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x, enc_out, src_mask, trg_mask):
@@ -210,7 +211,7 @@ class Transformer(nn.Module):
         self.trg_pad_idx = trg_pad_idx
         self.device = device
         self.max_length = max_length
-        self.reg = nn.Linear(embed_size, trg_feature_dim)
+        self.reg = nn.Linear(embed_size, trg_feature_dim).to(device)
 
     def make_src_mask(self, src):
         # src shape: (N, src_len)

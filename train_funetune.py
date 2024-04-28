@@ -32,7 +32,7 @@ dataFileType = 0
 epochSaveFrequency = 10  # every ten epoch
 epochSavePath = "pth/trained-"
 batchSize = 8
-nEpoch = 5
+nEpoch = 10
 nEpochs = [3, 5, 7, 10]
 modelLevel = "word"  # "character" or "word"
 seq_size = 128  # the length of the sequence
@@ -94,50 +94,59 @@ class Dataset(Dataset):
 spike, target, section_name = loadAllDays(ori_npy_folder_path)
 finetune_days = list(range(len(spike)))
 rawModel = torch.load('pth/trained-finetune_day1-25-2-1024-Transformer-64-2024-04-16-00-56-19.pth')
-for nEpoch in nEpochs:
-    for i in finetune_days:
-        results = []
-        print(section_name[i] + "\n")
-        prefix = section_name[i].split('_spike')[0]
 
-        dataset = Dataset(seq_size, out_size, spike[i], target[i], train_mode=True)
-        trainLen = int(0.8 * len(dataset))
-        train_dataset = Subset(dataset, range(0, trainLen))
-        test_dataset = Subset(dataset, range(trainLen, len(dataset)))
+results = []
+prefix = ''
+for i in finetune_days:
+    print(section_name[i] + "\n")
+    prefix = section_name[i].split('_spike')[0]
 
-        src_pad_idx = -1
-        trg_pad_idx = -1
-        src_feature_dim = dataset.x.shape[1]
-        trg_feature_dim = dataset.x.shape[1]
-        max_length = seq_size
+    dataset = Dataset(seq_size, out_size, spike[i], target[i], train_mode=True)
+    trainLen = int(0.8 * len(dataset))
+    train_dataset = Subset(dataset, range(0, trainLen))
+    test_dataset = Subset(dataset, range(trainLen, len(dataset)))
 
-        criterion = nn.MSELoss()
+    src_pad_idx = -1
+    trg_pad_idx = -1
+    src_feature_dim = dataset.x.shape[1]
+    trg_feature_dim = dataset.x.shape[1]
+    max_length = seq_size
 
-        print('model', modelType, 'epoch', nEpoch, 'batchsz', batchSize, 'betas', betas, 'eps', eps, 'wd', weightDecay,
-              'seq_size', seq_size)
+    criterion = nn.MSELoss()
 
-        tConf = TrainerConfig(modelType=modelType, maxEpochs=nEpoch, batchSize=batchSize, weightDecay=weightDecay,
-                              learningRate=lrInit, lrDecay=True, lrFinal=lrFinal, betas=betas, eps=eps,
-                              warmupTokens=0, finalTokens=nEpoch * trainLen * seq_size, numWorkers=0,
-                              epochSaveFrequency=epochSaveFrequency, epochSavePath=epochSavePath,
-                              out_dim=out_size, ctxLen=seq_size, embed_size=embed_size, criterion=criterion)
-        # 单位秒
-        timestep = batchSize * seq_size
-        print(f'Timestep(s): {timestep / 100}')
+    print('model', modelType, 'epoch', nEpoch, 'batchsz', batchSize, 'betas', betas, 'eps', eps, 'wd', weightDecay,
+          'seq_size', seq_size)
 
-        for step in range(batchSize, trainLen + batchSize, batchSize):
-            model = rawModel
-            finetune_dataset = Subset(train_dataset, range(0, min(step, trainLen)))
-            trainer = Trainer(model, finetune_dataset, test_dataset, tConf)
-            trainer.train()
-            result = trainer.test()
-            result['file_name'] = prefix
-            result['timestep/s'] = (step * seq_size) / 100
-            results.append(result)
-            print(prefix + 'done')
+    tConf = TrainerConfig(modelType=modelType, maxEpochs=nEpoch, batchSize=batchSize, weightDecay=weightDecay,
+                          learningRate=lrInit, lrDecay=True, lrFinal=lrFinal, betas=betas, eps=eps,
+                          warmupTokens=0, finalTokens=nEpoch * trainLen * seq_size, numWorkers=0,
+                          epochSaveFrequency=epochSaveFrequency, epochSavePath=epochSavePath,
+                          out_dim=out_size, ctxLen=seq_size, embed_size=embed_size, criterion=criterion)
+    # 单位秒
+    timestep = batchSize * seq_size
+    print(f'Timestep(s): {timestep / 100}')
 
-        save_to_excel(results,
-                      excel_path + prefix + '-' +
-                      modelType + '-' + str(nEpoch) + '-' + 'finetuneResults.xlsx',
-                      modelType, nEpoch, dimensions)
+    # for step in range(batchSize, trainLen + batchSize, batchSize):
+    #     model = rawModel
+    #     finetune_dataset = Subset(train_dataset, range(0, min(step, trainLen)))
+    #     trainer = Trainer(model, finetune_dataset, test_dataset, tConf)
+    #     trainer.train()
+    #     result = trainer.test()
+    #     result['file_name'] = prefix
+    #     result['timestep/s'] = (step * seq_size) / 100
+    #     results.append(result)
+    #     print(prefix + 'done')
+
+    # zero-shot
+    trainer = Trainer(rawModel, None, test_dataset, tConf)
+    result = trainer.test()
+    result['file_name'] = prefix
+    prefix = 'zero-shot'
+    results.append(result)
+
+save_to_excel(results,
+              excel_path +
+              prefix + '-' +
+              modelType + '-' + str(nEpoch) + '-' + 'results.xlsx',
+              modelType, nEpoch, dimensions)
 

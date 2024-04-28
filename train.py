@@ -35,7 +35,7 @@ dataFileType = 0
 epochSaveFrequency = 10  # every ten epoch
 epochSavePath = "pth/trained-"
 batchSize = 32
-nEpoch = 50
+nEpoch = 1
 modelLevel = "word"  # "character" or "word"
 seq_size = 128  # the length of the sequence
 out_size = 2  # the output dim
@@ -120,32 +120,32 @@ for spike_file, target_file in zip(spike_files, target_files):
     prefix = spike_file.split('_spike')[0]
     prefixes = [
         'indy_20161005_06',
-        'indy_20160921_01',
-        'indy_20160927_06',
-        'indy_20160927_04',
-        'indy_20161024_03',
-        'indy_20160915_01',
-        'indy_20160930_05',
-        'indy_20161220_02',
-        'indy_20161207_02',
-        'indy_20161025_04',
-        'indy_20161007_02',
-        'indy_20160916_01',
-        'indy_20160930_02',
-        'indy_20161017_02',
-        'indy_20161026_03',
-        'indy_20161013_03',
-        'indy_20161006_02',
-        'indy_20161212_02',
-        'indy_20161014_04',
-        'indy_20161027_03',
-        'indy_20170123_02',
-        'indy_20160624_03',
-        'indy_20161011_03',
-        'indy_20161206_02',
-        'indy_20170124_01',
-        'indy_20170131_02',
-        'indy_20170127_03'
+        # 'indy_20160921_01',
+        # 'indy_20160927_06',
+        # 'indy_20160927_04',
+        # 'indy_20161024_03',
+        # 'indy_20160915_01',
+        # 'indy_20160930_05',
+        # 'indy_20161220_02',
+        # 'indy_20161207_02',
+        # 'indy_20161025_04',
+        # 'indy_20161007_02',
+        # 'indy_20160916_01',
+        # 'indy_20160930_02',
+        # 'indy_20161017_02',
+        # 'indy_20161026_03',
+        # 'indy_20161013_03',
+        # 'indy_20161006_02',
+        # 'indy_20161212_02',
+        # 'indy_20161014_04',
+        # 'indy_20161027_03',
+        # 'indy_20170123_02',
+        # 'indy_20160624_03',
+        # 'indy_20161011_03',
+        # 'indy_20161206_02',
+        # 'indy_20170124_01',
+        # 'indy_20170131_02',
+        # 'indy_20170127_03'
     ]
     if prefix not in prefixes:
         continue
@@ -176,6 +176,13 @@ for spike_file, target_file in zip(spike_files, target_files):
     # setting the model parameters
     model = Transformer(src_feature_dim, trg_feature_dim, src_pad_idx, trg_pad_idx, max_length, embed_size, num_layers,
                         forward_expansion, heads)
+
+    from thop import profile
+    input1 = torch.randn((1, 4, 128, 96))
+    flops, params = profile(model, inputs=input1.to('cuda'))
+    print('Macs = ' + str(flops / 1000 ** 3) + 'G')
+    print('Params = ' + str(params / 1000 ** 2) + 'M')
+
     total_params = sum(p.numel() for p in model.parameters())
     print(f'Total parameters: {total_params}')
 
@@ -189,6 +196,7 @@ for spike_file, target_file in zip(spike_files, target_files):
                           warmupTokens=0, finalTokens=nEpoch * len(train_dataset) * seq_size, numWorkers=0,
                           epochSaveFrequency=epochSaveFrequency, epochSavePath=epochSavePath,
                           out_dim=out_size, ctxLen=seq_size, embed_size=embed_size, criterion=criterion)
+
     trainer = Trainer(model, train_dataset, test_dataset, tConf)
     trainer.train()
     result = trainer.test()

@@ -6,6 +6,7 @@ from tqdm.auto import tqdm
 from torch.utils.data.dataloader import DataLoader
 from torcheval.metrics.functional import r2_score
 import matplotlib.pyplot as plt
+import time
 
 from .utils import save_data2txt, load_npy
 
@@ -148,12 +149,19 @@ class Trainer:
                             num_workers=config.numWorkers)
 
         pbar = tqdm(enumerate(loader), total=len(loader),
-                    bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}') if self.t else enumerate(loader)
+                    bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
         for it, (x, y) in pbar:
             x = x.to(self.device)  # place data on the correct device
+            timeset = x.shape[0] * x.shape[1]
 
             with torch.no_grad():
+                start_time = time.time()
                 out = model(x)  # forward the model
+                end_time = time.time()
+                num = timeset / (end_time - start_time)
+                print(f"Time: {end_time - start_time:.4f}")
+                print(num)
+
                 out = out.cpu().detach()
                 loss = self.config.criterion(out.view(-1, 2), y.view(-1, 2))
                 # loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
@@ -174,8 +182,9 @@ class Trainer:
 
         self.results['test_loss'] = MeanLoss
         self.results['test_r2'] = MeanR2
-        self.results['train_loss'] = self.Loss_train[-1]
-        self.results['train_r2'] = self.r2_train[-1]
+        loss_train = self.Loss_train[-1] if self.Loss_train else None
+        r2_train = self.r2_train[-1] if self.r2_train else None
+        self.results.update({k: v for k, v in {'train_loss': loss_train, 'train_r2': r2_train}.items() if v is not None})
 
         return self.results
 
