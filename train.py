@@ -102,6 +102,24 @@ class Dataset(Dataset):
 # spike, target = spike_to_counts2(spike, y, np.transpose(new_time), gap_num)
 # spike, target = spike_to_counts1(spike, y, t[0])
 
+# src_pad_idx = -1
+# trg_pad_idx = -1
+# src_feature_dim = 96
+# trg_feature_dim = 96
+# max_length = seq_size
+# # setting the model parameters
+# model = Transformer(src_feature_dim, trg_feature_dim, src_pad_idx, trg_pad_idx, max_length, embed_size, num_layers,
+#                     forward_expansion, heads)
+#
+# from thop import profile
+# input1 = torch.randn((1, 128, 128, 96))
+# flops, params = profile(model, inputs=input1.to('cuda'))
+# print('Macs = ' + str(flops / 1000 ** 3) + 'G')
+# print('Params = ' + str(params / 1000 ** 2) + 'M')
+#
+# total_params = sum(p.numel() for p in model.parameters())
+# print(f'Total parameters: {total_params}')
+
 # 获取spike和target子目录的绝对路径
 spike_subdir = os.path.join(ori_npy_folder_path, "spike")
 target_subdir = os.path.join(ori_npy_folder_path, "target")
@@ -169,19 +187,13 @@ for spike_file, target_file in zip(spike_files, target_files):
 
     src_pad_idx = -1
     trg_pad_idx = -1
-    src_feature_dim = train_dataset.x.shape[1]
-    trg_feature_dim = train_dataset.x.shape[1]
+    src_feature_dim = 96
+    trg_feature_dim = 96
     max_length = seq_size
 
     # setting the model parameters
     model = Transformer(src_feature_dim, trg_feature_dim, src_pad_idx, trg_pad_idx, max_length, embed_size, num_layers,
                         forward_expansion, heads)
-
-    from thop import profile
-    input1 = torch.randn((1, 4, 128, 96))
-    flops, params = profile(model, inputs=input1.to('cuda'))
-    print('Macs = ' + str(flops / 1000 ** 3) + 'G')
-    print('Params = ' + str(params / 1000 ** 2) + 'M')
 
     total_params = sum(p.numel() for p in model.parameters())
     print(f'Total parameters: {total_params}')
@@ -209,8 +221,8 @@ for spike_file, target_file in zip(spike_files, target_files):
 
     result['file_name'] = prefix
     results.append(result)
-    # torch.save(model, epochSavePath + trainer.get_runName() +
-    # '-' + datetime.datetime.today().strftime('%Y-%m-%d-%H-%M-%S') + '.pth')
+    torch.save(model, epochSavePath + trainer.get_runName() +
+    '-' + datetime.datetime.today().strftime('%Y-%m-%d-%H-%M-%S') + '.pth')
     print(prefix + 'done')
 save_to_excel(results, excel_path + os.path.basename(ori_npy_folder_path) + '-' + modelType + '-' + str(nEpoch) +
               '-' + 'partialResults.xlsx', modelType, nEpoch, dimensions)
