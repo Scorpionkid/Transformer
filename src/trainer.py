@@ -152,16 +152,9 @@ class Trainer:
                     bar_format='{l_bar}{bar:10}{r_bar}{bar:-10b}')
         for it, (x, y) in pbar:
             x = x.to(self.device)  # place data on the correct device
-            timeset = x.shape[0] * x.shape[1]
 
             with torch.no_grad():
-                start_time = time.time()
                 out = model(x)  # forward the model
-                end_time = time.time()
-                num = timeset / (end_time - start_time)
-                print(f"Time: {end_time - start_time:.4f}")
-                print(num)
-
                 out = out.cpu().detach()
                 loss = self.config.criterion(out.view(-1, 2), y.view(-1, 2))
                 # loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
@@ -170,15 +163,11 @@ class Trainer:
             totalR2s += r2_s.item()
             self.Loss_test.append(loss.item())
             self.r2_test.append(r2_s.item())
-            # print(f"Batch Loss: {loss:.4f} R2_score: {r2_s:.4f}")
         it += 1
         MeanLoss = totalLoss / it
         MeanR2 = totalR2s / it
         print(f"R2_score: {MeanR2:.4f}, Test Mean Loss: {MeanLoss:.4f},  Num_iter: {it} ")
-        # with open(config.csv_file, "a", encoding='utf-8') as file:
-        #     file.write(f"{section_name}, {MeanLoss:.4f}, "
-        #                f"{self.config.modelType},"
-        #                f"{MeanR2:.4f}, \n")
+
 
         self.results['test_loss'] = MeanLoss
         self.results['test_r2'] = MeanR2

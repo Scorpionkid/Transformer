@@ -358,11 +358,11 @@ def load_npy(file_path):
 
 def save_to_excel(results, excel_path, model_name, epoch, dimensions):
     # 创建一个包含所需列的新行DataFrame
-    columns = ['filename', 'model', 'epoch'] + dimensions
+    columns = ['name', 'model', 'epoch'] + dimensions
     df_rows = []
 
     for result in results:
-        file_data = [result['file_name'], model_name, epoch] + [result.get(dim, '') for dim in dimensions]
+        file_data = [result['name'], model_name, epoch] + [result.get(dim, '') for dim in dimensions]
         df_rows.append(file_data)
 
     df_results = pd.DataFrame(df_rows, columns=columns)
@@ -446,15 +446,15 @@ def AllDays_split(data_path):
         target_train.append(temp[:int(len(temp) * 0.8), :])
         target_test.append(temp[int(len(temp) * 0.8):, :])
 
-    # s_train = np.concatenate(spike_train, axis=0)
-    # s_test = np.concatenate(spike_test, axis=0)
-    # t_train = np.concatenate(target_train, axis=0)
-    # t_test = np.concatenate(target_test, axis=0)
+    s_train = np.concatenate(spike_train, axis=0)
+    s_test = np.concatenate(spike_test, axis=0)
+    t_train = np.concatenate(target_train, axis=0)
+    t_test = np.concatenate(target_test, axis=0)
 
     # s = np.concatenate((s_train, s_test), axis=0)
     # t = np.concatenate((t_train, t_test), axis=0)
 
-    return spike_train, spike_test, target_train, target_test, section_name
+    return s_train, s_test, t_train, t_test
 
 def parameter_search(embed_sizes, num_layers_list, forward_expansions, heads_list, src_feature_dim, trg_feature_dim,
                      src_pad_idx, trg_pad_idx, max_length,
