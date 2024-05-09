@@ -22,7 +22,6 @@ dataFile = "indy_20160627_01.mat"
 dataPath = "../data/Makin/"
 npy_folder_path = "../data/Makin_processed_npy"
 ori_npy_folder_path = "../data/Makin_origin_npy"
-csv_file = "results/shuffleDaySequenceTrainAll.csv"
 excel_path = 'results/'
 dataFileCoding = "utf-8"
 # use 0 for char-level english and 1 for chinese. Only affects some Transformer hyperparameters
@@ -32,7 +31,7 @@ dataFileType = 0
 epochSaveFrequency = 10  # every ten epoch
 epochSavePath = "pth/trained-"
 batchSize = 32
-nEpoch = 1
+nEpoch = 50
 modelLevel = "word"  # "character" or "word"
 seq_size = 1024  # the length of the sequence
 out_size = 2  # the output dim
@@ -42,8 +41,8 @@ forward_expansion = 2
 heads = 2
 
 # 参数范围
+num_layers_list = np.arange(3,54,5)
 embed_sizes = [32, 64, 128]
-num_layers_list = np.arange(3,15)
 forward_expansions = [1, 2, 3, 4]
 heads_list = [1, 2, 4, 8]
 
